@@ -1,14 +1,15 @@
 mod inspect;
 mod mangle;
+mod mp4;
 
 use std::fs::File;
-use std::io::{self, Seek};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::Verbosity;
 use env_logger::{Env, Builder};
-
+use ::mp4::{BoxType, Mp4Reader};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -18,6 +19,21 @@ struct Cli {
 
 	#[command(subcommand)]
 	command: Command,
+}
+
+#[derive(Clone, ValueEnum)]
+enum BoxTypeArg {
+	Mdat,
+	Moov,
+}
+
+impl Into<BoxType> for BoxTypeArg {
+	fn into(self) -> BoxType {
+		match self {
+			BoxTypeArg::Mdat => BoxType::MdatBox,
+			BoxTypeArg::Moov => BoxType::MoovBox,
+		}
+	}
 }
 
 #[derive(Subcommand)]
@@ -32,6 +48,17 @@ enum Command {
 	Inspect {
 		/// path to target file
 		file: PathBuf,
+	},
+
+	/// Extract a specific box payload from the given MP4 file
+	Extract {
+		/// type of box/atom to extract
+		#[arg(value_enum)]
+		box_type: BoxTypeArg,
+		/// path to input video file
+		input: PathBuf,
+		/// path to target output file
+		output: PathBuf,
 	},
 
 	/// intentionally corrupt a given file
@@ -91,11 +118,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			let size = f.metadata()?.len();
 			let reader = io::BufReader::new(f);
 
-			let mp4 = mp4::Mp4Reader::read_header(reader, size)?;
+			let mp4 = Mp4Reader::read_header(reader, size)?;
 			println!("{:#?}", mp4);
 		},
 
 		Command::Inspect { file } => inspect::inspect(&file)?,
+
+		Command::Extract { box_type, input, output } => inspect::extract(box_type.into(), &input, &output)?,
 
 		Command::Mangle(mangle_command) => match mangle_command {
 			MangleCommand::Flip { count, file } => mangle::flip_bits(&file, count)?,

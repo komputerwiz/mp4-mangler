@@ -11,14 +11,21 @@ struct InspectVisitor {
 }
 
 impl Mp4Visitor for InspectVisitor {
-	fn start_box(&mut self, header: &BoxHeader, _reader: &mut impl io::Read) -> io::Result<()> {
-		println!("{:indent$}{} ({} B)", "", header.name, header.size, indent=self.depth * 2);
+	fn start_box(&mut self, header: &BoxHeader, corrected_size: Option<u64>) -> io::Result<()> {
+		if let Some(size) = corrected_size {
+			println!("{:indent$}{} ({} B declared, {} B corrected)", "", header.name, header.size, size, indent=self.depth * 2);
+		} else {
+			println!("{:indent$}{} ({} B)", "", header.name, header.size, indent=self.depth * 2);
+		}
 		self.depth += 1;
+
 		Ok(())
 	}
 
-	fn end_box(&mut self, _typ: &BoxType) {
+	fn end_box(&mut self, _typ: &BoxType) -> io::Result<()> {
 		self.depth -= 1;
+
+		Ok(())
 	}
 }
 
@@ -37,6 +44,7 @@ pub fn inspect(file: &Path) -> io::Result<()> {
 struct ExtractVisitor<'a> {
 	box_type: BoxType,
 	writer: &'a mut dyn io::Write,
+	should_read: bool,
 }
 
 impl<'a> ExtractVisitor<'a> {
@@ -44,14 +52,24 @@ impl<'a> ExtractVisitor<'a> {
 		Self {
 			box_type,
 			writer,
+			should_read: false,
 		}
 	}
 }
 
 impl<'a> Mp4Visitor for ExtractVisitor<'a> {
-	fn start_box(&mut self, header: &BoxHeader, reader: &mut impl io::Read) -> io::Result<()> {
+	fn start_box(&mut self, header: &BoxHeader, _corrected_size: Option<u64>) -> io::Result<()> {
 		if header.name == self.box_type {
+			self.should_read = true;
+		}
+
+		Ok(())
+	}
+
+	fn data(&mut self, reader: &mut impl io::Read) -> io::Result<()> {
+		if self.should_read {
 			io::copy(reader, self.writer)?;
+			self.should_read = false;
 		}
 
 		Ok(())

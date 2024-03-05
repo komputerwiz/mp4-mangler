@@ -1,6 +1,7 @@
 mod inspect;
 mod mangle;
 mod mp4;
+mod recover;
 
 use std::fs::File;
 use std::io;
@@ -39,15 +40,13 @@ impl Into<BoxType> for BoxTypeArg {
 #[derive(Subcommand)]
 enum Command {
 	/// Attempt to read box/atom structure from the given MP4 file outright
-	Read {
-		/// path to target file
-		file: PathBuf,
-	},
-
-	/// Perform deep inspection on the given MP4 file
 	Inspect {
 		/// path to target file
 		file: PathBuf,
+
+		/// Perform deep inspection on the given MP4 file (only works with a mostly-well-formed MP4 file)
+		#[arg(long)]
+		deep: bool,
 	},
 
 	/// Extract a specific box payload from the given MP4 file
@@ -64,6 +63,14 @@ enum Command {
 	/// intentionally corrupt a given file
 	#[command(subcommand)]
 	Mangle(MangleCommand),
+
+	/// attempt to recover a video file
+	Recover {
+		/// path to input video file
+		input: PathBuf,
+		/// path to target output file
+		output: PathBuf,
+	},
 }
 
 #[derive(Subcommand)]
@@ -113,16 +120,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	log::trace!("logger initialized");
 
 	match cli.command {
-		Command::Read { file } => {
-			let f = File::open(file)?;
-			let size = f.metadata()?.len();
-			let reader = io::BufReader::new(f);
+		Command::Inspect { file, deep } => {
+			if deep {
+				let f = File::open(file)?;
+				let size = f.metadata()?.len();
+				let reader = io::BufReader::new(f);
 
-			let mp4 = Mp4Reader::read_header(reader, size)?;
-			println!("{:#?}", mp4);
+				let mp4 = Mp4Reader::read_header(reader, size)?;
+				println!("{:#?}", mp4);
+			} else {
+				inspect::inspect(&file)?;
+			}
 		},
-
-		Command::Inspect { file } => inspect::inspect(&file)?,
 
 		Command::Extract { box_type, input, output } => inspect::extract(box_type.into(), &input, &output)?,
 
@@ -131,6 +140,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			MangleCommand::Blank { count, block_size, file } => mangle::blank_blocks(&file, count, block_size)?,
 			MangleCommand::Truncate { amount, file } => mangle::truncate(&file, amount)?,
 		}
+
+		Command::Recover { input, output } => recover::recover(&input, &output)?,
 	}
 
 	Ok(())

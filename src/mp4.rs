@@ -3,30 +3,76 @@ use mp4::{BoxHeader, BoxType};
 
 /// A SAX-style visitor/parser for reading MP4 boxes
 pub trait Mp4Visitor {
-	fn start_box(&mut self, header: &BoxHeader, reader: &mut impl Read) -> io::Result<()>;
-	fn end_box(&mut self, _typ: &BoxType) {}
+	fn start_box(&mut self, _header: &BoxHeader, _corrected_size: Option<u64>) -> io::Result<()> { Ok(()) }
+	fn data(&mut self, _reader: &mut impl Read) -> io::Result<()> { Ok(()) }
+	fn end_box(&mut self, _typ: &BoxType) -> io::Result<()> { Ok(()) }
 }
 
 pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4Visitor) -> io::Result<R> {
+	// A box is simply a header followed by content.
+	// The header includes the size (in bytes) and type of the box, and has 2 different forms depending on the size:
+	//
+	// if size <= u32::MAX  (8-byte header),
+	//
+	//   box {
+	//     header {
+	//       size: u32,      // big endian
+	//       type: [u8; 4],  // four ASCII chars
+	//     },
+	//     content: [u8; header.size],
+	//   }
+	//
+	// if size > u32::MAX  (16-byte header),
+	//
+	//   header {
+	//     size: u32,       // big endian, set to 1
+	//     type: [u8; 4],   // four ASCII chars
+	//     largesize: u64,  // big endian
+	//   },
+	//   content: [u8; header.largesize]
+	//
+	// The box size declared in the header includes the size of the header itself,
+	// so the header of an empty box (i.e., with no content) will have a declared size of 8 bytes
+
+	// The stream is currently positioned at the start of the header, and `current` captures this position.
+	// `end` captures the end of the current context, which could be the file itself or the parent box.
+	//
+	//   ┌─ current                     end ─┐
+	//   │                                   │
+	//   │ header │ content │ other stuff... │
+	//   ^
 	let mut current = reader.stream_position()?;
+
+	// Boxes are composite, meaning the contents of a box can be additional (sub-)boxes.
+	// Hence, read them iteratively and recursively to catch all of them.
 	while current < end {
 		log::debug!("reading box header");
 		let header = read_header(&mut reader)?;
 
+		// The stream is now positioned at the start of the content.
+		// In a corrupted file, the size declared in the header could potentially overflow the end.
+		// The following situation is expected and desirable...
+		//
+		//   ┌─ current         ┌─ box_end   end ─┐
+		//   │                  │                 │
+		//   │ header │ content │ other stuff...  │
+		//            ^
+		// But we want to catch the following case to correct for it:
+		//
+		//   ┌─ current   end? ─┐  box_end? ─┐
+		//   │                  │            │
+		//   │ header │ content │      oops! │
+		//            ^
 		let mut box_end = current + header.size;
-		if box_end > end {
+		let corrected_size = if box_end > end {
 			log::error!("declared box size overflows container by {} B", box_end - end);
 			box_end = end;
-		}
+			Some(box_end - current)
+		} else {
+			None
+		};
 
-		// save current position
-		let payload_start = reader.stream_position()?;
-		// limit visitor's reader to just the contents of this box
-		let mut sub_reader = reader.take(box_end - current);
-		visitor.start_box(&header, &mut sub_reader)?;
-		reader = sub_reader.into_inner();
-		// restore current position
-		reader.seek(SeekFrom::Start(payload_start))?;
+		visitor.start_box(&header, corrected_size)?;
 
 		match header.name {
 			BoxType::ElstBox
@@ -47,15 +93,23 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 				| BoxType::StcoBox
 				| BoxType::MetaBox
 				=> {
-					log::trace!("skipping box");
+					// limit visitor's reader to just the contents of this box
+					let content_start = reader.stream_position()?;
+					let mut sub_reader = reader.take(box_end - content_start);
+					visitor.data(&mut sub_reader)?;
+					reader = sub_reader.into_inner();
+
+					// skip to the end of this box
+					log::trace!("not recursing into 'data-only' box");
 					reader.seek(SeekFrom::Start(box_end))?;
 				},
 			_ => {
+				// traverse all other boxes recursively
 				reader = read_box(reader, box_end, visitor)?;
 			}
 		}
 
-		visitor.end_box(&header.name);
+		visitor.end_box(&header.name)?;
 
 		current = reader.stream_position()?;
 	}
@@ -109,5 +163,20 @@ fn read_header<R: Read>(reader: &mut R) -> io::Result<BoxHeader> {
 			name: BoxType::from(typ),
 			size: size as u64,
 		})
+	}
+}
+
+pub trait BoxHeaderExt {
+	fn set_size(&mut self, content_size: u64);
+}
+
+impl BoxHeaderExt for BoxHeader {
+	fn set_size(&mut self, content_size: u64) {
+		self.size = content_size + 8;
+
+		if self.size > u32::MAX as u64 {
+			// writing will need to use longsize variant
+			self.size += 8;
+		}
 	}
 }

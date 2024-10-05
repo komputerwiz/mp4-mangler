@@ -1,5 +1,5 @@
 [package]
-name = "mangle-mp4"
+name = "mp4-cli"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,3 +12,7 @@ env_logger = "0.10.2"
 log = "0.4.20"
 mp4 = "0.14.0"
 rand = "0.8.5"
+
+[[bin]]
+name = "mp4"
+path = "src/main.rs"

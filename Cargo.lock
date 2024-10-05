@@ -265,18 +265,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 
 [[package]]
-name = "mangle-mp4"
-version = "0.1.0"
-dependencies = [
- "clap",
- "clap-verbosity-flag",
- "env_logger",
- "log",
- "mp4",
- "rand",
-]
-
-[[package]]
 name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -294,6 +282,18 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "mp4-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "clap-verbosity-flag",
+ "env_logger",
+ "log",
+ "mp4",
+ "rand",
 ]
 
 [[package]]

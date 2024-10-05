@@ -12,6 +12,9 @@ use clap_verbosity_flag::Verbosity;
 use env_logger::{Env, Builder};
 use ::mp4::{BoxType, Mp4Reader};
 
+use crate::inspect::{ExtractVisitor, InspectVisitor, PathVisitor};
+use crate::mp4::read_box;
+
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -153,6 +156,10 @@ enum Command {
 		/// Perform deep inspection on the given MP4 file (only works with a mostly-well-formed MP4 file)
 		#[arg(long)]
 		deep: bool,
+
+		/// Print paths instead of an indented tree (mutually exclusive with --deep)
+		#[arg(long)]
+		paths: bool,
 	},
 
 	/// Extract a specific box payload from the given MP4 file
@@ -230,20 +237,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	log::trace!("logger initialized");
 
 	match cli.command {
-		Command::Inspect { file, deep } => {
-			if deep {
-				let f = File::open(file)?;
-				let size = f.metadata()?.len();
-				let reader = io::BufReader::new(f);
+		Command::Inspect { file, deep, paths } => {
+			let f = File::open(file)?;
+			let size = f.metadata()?.len();
+			let reader = io::BufReader::new(f);
 
+			if deep {
 				let mp4 = Mp4Reader::read_header(reader, size)?;
 				println!("{:#?}", mp4);
+			} else if paths {
+				let mut visitor = PathVisitor::default();
+				read_box(reader, size, &mut visitor)?;
 			} else {
-				inspect::inspect(&file)?;
+				let mut visitor = InspectVisitor::default();
+				read_box(reader, size, &mut visitor)?;
 			}
 		},
 
-		Command::Extract { box_type, input, output } => inspect::extract(box_type.into(), &input, &output)?,
+		Command::Extract { box_type, input, output } => {
+			let in_file = File::open(input)?;
+			let in_file_size = in_file.metadata()?.len();
+			let reader = io::BufReader::new(in_file);
+
+			let out_file = File::create(output)?;
+			let mut writer = io::BufWriter::new(out_file);
+
+			let mut visitor = ExtractVisitor::new(box_type.into(), &mut writer);
+			read_box(reader, in_file_size, &mut visitor)?;
+		},
 
 		Command::Mangle(mangle_command) => match mangle_command {
 			MangleCommand::Flip { count, file } => mangle::flip_bits(&file, count)?,

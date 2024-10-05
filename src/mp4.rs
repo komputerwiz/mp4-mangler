@@ -65,7 +65,7 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 		//            ^
 		let mut box_end = current + header.size;
 		let corrected_size = if box_end > end {
-			log::error!("declared box size overflows container by {} B", box_end - end);
+			log::error!("declared {} box size overflows container by {} B", header.name, box_end - end);
 			box_end = end;
 			Some(box_end - current)
 		} else {
@@ -75,6 +75,10 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 		visitor.start_box(&header, corrected_size)?;
 
 		match header.name {
+			BoxType::FreeBox => {
+				log::trace!("skipping over 'free' box");
+				reader.seek(SeekFrom::Start(box_end))?;
+			},
 			BoxType::ElstBox
 				| BoxType::FtypBox
 				| BoxType::HdlrBox
@@ -92,6 +96,18 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 				| BoxType::StszBox
 				| BoxType::StcoBox
 				| BoxType::MetaBox
+				| BoxType::SmhdBox
+				| BoxType::Co64Box
+				| BoxType::UdtaBox
+				| BoxType::UnknownBox(0x636c6566) // clef
+				| BoxType::UnknownBox(0x70726f66) // prof
+				| BoxType::UnknownBox(0x656e6f66) // enof
+				| BoxType::UnknownBox(0x63736c67) // cslg
+				| BoxType::UnknownBox(0x73647470) // sdtp
+				| BoxType::UnknownBox(0x73677064) // sgpd
+				| BoxType::UnknownBox(0x73626770) // sbgp
+				| BoxType::UnknownBox(0x676d696e) // gmin
+				| BoxType::UnknownBox(0x6e6d6864) // nmhd
 				=> {
 					// limit visitor's reader to just the contents of this box
 					let content_start = reader.stream_position()?;
@@ -100,11 +116,12 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 					reader = sub_reader.into_inner();
 
 					// skip to the end of this box
-					log::trace!("not recursing into 'data-only' box");
+					log::trace!("not recursing into 'data-only' {} box", header.name);
 					reader.seek(SeekFrom::Start(box_end))?;
 				},
 			_ => {
 				// traverse all other boxes recursively
+				log::trace!("descending recursively into {} box", header.name);
 				reader = read_box(reader, box_end, visitor)?;
 			}
 		}
@@ -149,13 +166,13 @@ fn read_header<R: Read>(reader: &mut R) -> io::Result<BoxHeader> {
 		Ok(BoxHeader {
 			name: BoxType::from(typ),
 
-			// Subtract the length of the serialized largesize, as callers assume `size - HEADER_SIZE` is the length
-			// of the box data. Disallow `largesize < 16`, or else a largesize of 8 will result in a BoxHeader::size
-			// of 0, incorrectly indicating that the box data extends to the end of the stream.
+			// Disallow `largesize < 16`, or else a largesize of 8 will result in a BoxHeader::size of 0,
+			// incorrectly indicating that the box data extends to the end of the stream.
+			// mp4 crate assumes caller expects content length to be size - 8, but we make no such assumptions here...
 			size: match largesize {
 				0 => 0,
 				1..=15 => return Err(std::io::Error::new(ErrorKind::InvalidData, "64-bit box size too small")),
-				16..=u64::MAX => largesize - 8,
+				16..=u64::MAX => largesize,
 			},
 		})
 	} else {

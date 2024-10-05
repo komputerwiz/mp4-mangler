@@ -1,7 +1,7 @@
 mod inspect;
 mod mangle;
 mod mp4;
-mod recover;
+mod strip;
 
 use std::fs::File;
 use std::io;
@@ -24,15 +24,121 @@ struct Cli {
 
 #[derive(Clone, ValueEnum)]
 enum BoxTypeArg {
+	Ftyp,
+	Mvhd,
+	Mfhd,
+	Free,
 	Mdat,
 	Moov,
+	Mvex,
+	Mehd,
+	Trex,
+	Emsg,
+	Moof,
+	Tkhd,
+	Tfhd,
+	Tfdt,
+	Edts,
+	Mdia,
+	Elst,
+	Mdhd,
+	Hdlr,
+	Minf,
+	Vmhd,
+	Stbl,
+	Stsd,
+	Stts,
+	Ctts,
+	Stss,
+	Stsc,
+	Stsz,
+	Stco,
+	Co64,
+	Trak,
+	Traf,
+	Trun,
+	Udta,
+	Meta,
+	Dinf,
+	Dref,
+	Url,
+	Smhd,
+	Avc1,
+	AvcC,
+	Hev1,
+	HvcC,
+	Mp4a,
+	Esds,
+	Tx3g,
+	Vpcc,
+	Vp09,
+	Data,
+	Ilst,
+	Name,
+	Day,
+	Covr,
+	Desc,
+	Wide,
 }
 
 impl Into<BoxType> for BoxTypeArg {
 	fn into(self) -> BoxType {
 		match self {
-			BoxTypeArg::Mdat => BoxType::MdatBox,
-			BoxTypeArg::Moov => BoxType::MoovBox,
+			Self::Ftyp => BoxType::FtypBox,
+			Self::Mvhd => BoxType::MvhdBox,
+			Self::Mfhd => BoxType::MfhdBox,
+			Self::Free => BoxType::FreeBox,
+			Self::Mdat => BoxType::MdatBox,
+			Self::Moov => BoxType::MoovBox,
+			Self::Mvex => BoxType::MvexBox,
+			Self::Mehd => BoxType::MehdBox,
+			Self::Trex => BoxType::TrexBox,
+			Self::Emsg => BoxType::EmsgBox,
+			Self::Moof => BoxType::MoofBox,
+			Self::Tkhd => BoxType::TkhdBox,
+			Self::Tfhd => BoxType::TfhdBox,
+			Self::Tfdt => BoxType::TfdtBox,
+			Self::Edts => BoxType::EdtsBox,
+			Self::Mdia => BoxType::MdiaBox,
+			Self::Elst => BoxType::ElstBox,
+			Self::Mdhd => BoxType::MdhdBox,
+			Self::Hdlr => BoxType::HdlrBox,
+			Self::Minf => BoxType::MinfBox,
+			Self::Vmhd => BoxType::VmhdBox,
+			Self::Stbl => BoxType::StblBox,
+			Self::Stsd => BoxType::StsdBox,
+			Self::Stts => BoxType::SttsBox,
+			Self::Ctts => BoxType::CttsBox,
+			Self::Stss => BoxType::StssBox,
+			Self::Stsc => BoxType::StscBox,
+			Self::Stsz => BoxType::StszBox,
+			Self::Stco => BoxType::StcoBox,
+			Self::Co64 => BoxType::Co64Box,
+			Self::Trak => BoxType::TrakBox,
+			Self::Traf => BoxType::TrafBox,
+			Self::Trun => BoxType::TrunBox,
+			Self::Udta => BoxType::UdtaBox,
+			Self::Meta => BoxType::MetaBox,
+			Self::Dinf => BoxType::DinfBox,
+			Self::Dref => BoxType::DrefBox,
+			Self::Url => BoxType::UrlBox,
+			Self::Smhd => BoxType::SmhdBox,
+			Self::Avc1 => BoxType::Avc1Box,
+			Self::AvcC => BoxType::AvcCBox,
+			Self::Hev1 => BoxType::Hev1Box,
+			Self::HvcC => BoxType::HvcCBox,
+			Self::Mp4a => BoxType::Mp4aBox,
+			Self::Esds => BoxType::EsdsBox,
+			Self::Tx3g => BoxType::Tx3gBox,
+			Self::Vpcc => BoxType::VpccBox,
+			Self::Vp09 => BoxType::Vp09Box,
+			Self::Data => BoxType::DataBox,
+			Self::Ilst => BoxType::IlstBox,
+			Self::Name => BoxType::NameBox,
+			Self::Day => BoxType::DayBox,
+			Self::Covr => BoxType::CovrBox,
+			Self::Desc => BoxType::DescBox,
+			Self::Wide => BoxType::WideBox,
 		}
 	}
 }
@@ -64,8 +170,12 @@ enum Command {
 	#[command(subcommand)]
 	Mangle(MangleCommand),
 
-	/// attempt to recover a video file
-	Recover {
+	/// Strips the specified boxes/atoms from a video file
+	Strip {
+		/// ignore the following types of boxes/atoms
+		#[arg(short='x', long)]
+		ignore: Vec<BoxTypeArg>,
+
 		/// path to input video file
 		input: PathBuf,
 		/// path to target output file
@@ -141,7 +251,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			MangleCommand::Truncate { amount, file } => mangle::truncate(&file, amount)?,
 		}
 
-		Command::Recover { input, output } => recover::recover(&input, &output)?,
+		Command::Strip { ignore, input, output } => strip::strip(&input, &output, ignore.into_iter().map(|x| x.into()).collect())?,
 	}
 
 	Ok(())

@@ -6,7 +6,7 @@ use mp4::{BoxHeader, BoxType};
 
 use crate::mp4::{read_box, Mp4Visitor};
 
-pub fn recover(input: &Path, output: &Path) -> io::Result<()> {
+pub fn strip(input: &Path, output: &Path, ignore: Vec<BoxType>) -> io::Result<()> {
 	let in_file = File::open(input)?;
 	let in_file_size = in_file.metadata()?.len();
 	let reader = io::BufReader::new(in_file);
@@ -14,32 +14,46 @@ pub fn recover(input: &Path, output: &Path) -> io::Result<()> {
 	let out_file = File::create(output)?;
 	let mut writer = io::BufWriter::new(out_file);
 
-	let mut visitor = RecoverVisitor::new(&mut writer);
+	let mut visitor = StripVisitor::new(&mut writer, ignore);
 	read_box(reader, in_file_size, &mut visitor)?;
 
 	Ok(())
 }
 
 struct Mp4Box {
-	header: BoxHeader,
+	name: BoxType,
 	data: BoxData,
 }
 
 impl Mp4Box {
-	pub fn new(header: BoxHeader) -> Self {
+	pub fn new(name: BoxType) -> Self {
 		Self {
-			header,
+			name,
 			data: BoxData::Empty,
 		}
 	}
 
 	pub fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
-		let mut size = self.header.write(writer).map_err(|e| match e {
-			mp4::Error::IoError(io_error) => io_error,
-			e => io::Error::new(io::ErrorKind::Other, e),
-		})?;
+		let mut data_buf = Vec::new();
+		self.data.write_to(&mut data_buf)?;
 
-		size += self.data.write_to(writer)?;
+		let mut size = 8 + data_buf.len() as u64;
+		if size > u32::MAX as u64 {
+			size += 8;
+		}
+
+		let name_id: u32 = self.name.into();
+
+		if size > u32::MAX as u64 {
+			writer.write_all(&1u32.to_be_bytes())?;
+			writer.write_all(&name_id.to_be_bytes())?;
+			writer.write_all(&size.to_be_bytes())?;
+		} else {
+			writer.write_all(&(size as u32).to_be_bytes())?;
+			writer.write_all(&name_id.to_be_bytes())?;
+		}
+
+		writer.write_all(&data_buf)?;
 
 		Ok(size)
 	}
@@ -70,48 +84,51 @@ impl BoxData {
 	}
 }
 
-struct RecoverVisitor<'a> {
+struct StripVisitor<'a> {
 	writer: &'a mut dyn io::Write,
+	ignore: Vec<BoxType>,
 	stack: Vec<Mp4Box>,
-	found_stco: bool,
-	mdat_offset: Option<usize>,
 }
 
-impl<'a> RecoverVisitor<'a> {
-	fn new(writer: &'a mut (impl io::Write + io::Seek)) -> Self {
+impl<'a> StripVisitor<'a> {
+	fn new(writer: &'a mut impl io::Write, ignore: Vec<BoxType>) -> Self {
 		Self {
 			writer,
+			ignore,
 			stack: Vec::new(),
-			found_stco: false,
-			mdat_offset: None,
 		}
 	}
 
 }
 
-impl<'a> Mp4Visitor for RecoverVisitor<'a> {
+impl<'a> Mp4Visitor for StripVisitor<'a> {
 	fn start_box(&mut self, header: &BoxHeader, corrected_size: Option<u64>) -> io::Result<()> {
-		let mut dup_header = header.clone();
 		if let Some(size) = corrected_size {
-			log::warn!("Correcting size mismatch in {} box: header says {} B, but should actually be {} B", dup_header.name, dup_header.size, size);
-			dup_header.size = size;
+			log::warn!("Correcting size mismatch in {} box: header says {} B, but should actually be {} B", header.name, header.size, size);
 		}
 
-		self.stack.push(Mp4Box::new(dup_header));
+		// NOTE: maintain context for all box types; the "ignore" step will happen later.
+		self.stack.push(Mp4Box::new(header.name));
 
 		Ok(())
 	}
 
+	// Attempt to do some recovery in the form of box offset/size consistency adjustments
 	fn data(&mut self, reader: &mut impl io::Read) -> io::Result<()> {
 		let current_box = self.stack.last_mut().unwrap();
 
 		let mut data: Vec<u8> = Vec::new();
-		match current_box.header.name {
+
+		if self.ignore.contains(&current_box.name) {
+			log::info!("skipping data for ignored box type {}", current_box.name);
+			return Ok(());
+		}
+
+		match current_box.name {
 			BoxType::CttsBox => {
 				let mut version_flags = [0u8; 4];
 				// version (1 B) and flags (3 B)
 				reader.read_exact(&mut version_flags)?;
-				data.write(&version_flags)?;
 
 				// entry count (u32)
 				let mut entry_count_bytes = [0u8; 4];
@@ -129,6 +146,7 @@ impl<'a> Mp4Visitor for RecoverVisitor<'a> {
 					log::warn!("correcting ctts table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
 				}
 
+				data.write(&version_flags)?;
 				data.write(&(entries.len() as u32).to_be_bytes())?;
 				for entry in entries {
 					data.write(&entry)?;
@@ -176,7 +194,6 @@ impl<'a> Mp4Visitor for RecoverVisitor<'a> {
 				let mut version_flags = [0u8; 4];
 				// version (1 B) and flags (3 B)
 				reader.read_exact(&mut version_flags)?;
-				data.write(&version_flags)?;
 
 				// entry count (u32)
 				let mut entry_count_bytes = [0u8; 4];
@@ -194,15 +211,70 @@ impl<'a> Mp4Visitor for RecoverVisitor<'a> {
 					log::warn!("correcting stco table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
 				}
 
+				data.write(&version_flags)?;
 				data.write(&(entries.len() as u32).to_be_bytes())?;
 				for entry in entries {
 					data.write(&entry)?;
 				}
-
-				self.found_stco = true;
 			},
 
+			BoxType::StscBox => {
+				let mut version_flags = [0u8; 4];
+				// version (1 B) and flags (3 B)
+				reader.read_exact(&mut version_flags)?;
 
+				// entry count (u32)
+				let mut entry_count_bytes = [0u8; 4];
+				reader.read_exact(&mut entry_count_bytes)?;
+				let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+				// read entries ({first_chunk: u32, samples_per_chunk: u32, sample_description_id: u32})
+				let mut entries = Vec::new();
+				let mut entry_bytes = [0u8; 12];
+				while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+					entries.push(entry_bytes);
+				}
+
+				if entry_count as usize != entries.len() {
+					log::warn!("correcting stsc table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+				}
+
+				data.write(&version_flags)?;
+				data.write(&(entries.len() as u32).to_be_bytes())?;
+				for entry in entries {
+					data.write(&entry)?;
+				}
+			},
+
+			BoxType::SttsBox => {
+				let mut version_flags = [0u8; 4];
+				// version (1 B) and flags (3 B)
+				reader.read_exact(&mut version_flags)?;
+
+				// entry count (u32)
+				let mut entry_count_bytes = [0u8; 4];
+				reader.read_exact(&mut entry_count_bytes)?;
+				let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+				// read entries ({sample_count: u32, sample_duration: u32})
+				let mut entries = Vec::new();
+				let mut entry_bytes = [0u8; 8];
+				while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+					entries.push(entry_bytes);
+				}
+
+				if entry_count as usize != entries.len() {
+					log::warn!("correcting stts table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+				}
+
+				data.write(&version_flags)?;
+				data.write(&(entries.len() as u32).to_be_bytes())?;
+				for entry in entries {
+					data.write(&entry)?;
+				}
+			},
+
+			// copy all other box types verbatim
 			_ => {
 				io::copy(reader, &mut data)?;
 			},
@@ -215,6 +287,11 @@ impl<'a> Mp4Visitor for RecoverVisitor<'a> {
 
 	fn end_box(&mut self, _typ: &mp4::BoxType) -> io::Result<()> {
 		if let Some(exit_box) = self.stack.pop() {
+			if self.ignore.contains(&exit_box.name) {
+				log::info!("skipping ignored box type {}", exit_box.name);
+				return Ok(())
+			}
+
 			if let Some(parent_box) = self.stack.last_mut() {
 				// "write" data to parent box
 				match &mut parent_box.data {
@@ -236,7 +313,8 @@ impl<'a> Mp4Visitor for RecoverVisitor<'a> {
 				// exiting root; write data to file
 				exit_box.write_to(&mut self.writer)?;
 
-				// first verify that we have all required boxes; if any are missing, append them to the file
+				/*
+				// verify that we have all required boxes; if any are missing, append them to the file
 				if !self.found_stco {
 					log::warn!("stco box not found");
 					if let Some(offset) = self.mdat_offset {
@@ -260,6 +338,7 @@ impl<'a> Mp4Visitor for RecoverVisitor<'a> {
 						stco_box.write_to(&mut self.writer)?;
 					}
 				}
+				*/
 			}
 		}
 

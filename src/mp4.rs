@@ -1,5 +1,22 @@
 use std::io::{self, Read, Seek, ErrorKind, SeekFrom};
-use mp4::{BoxHeader, BoxType};
+use mp4::BoxType;
+
+pub struct BoxHeader {
+	pub name: BoxType,
+	pub size: u64,
+	pub longsize: bool,
+}
+
+impl BoxHeader {
+	pub fn set_size(&mut self, content_size: u64) {
+		self.size = content_size + 8;
+
+		if self.size > u32::MAX as u64 {
+			// writing will need to use longsize variant
+			self.size += 8;
+		}
+	}
+}
 
 /// A SAX-style visitor/parser for reading MP4 boxes
 pub trait Mp4Visitor {
@@ -174,26 +191,14 @@ fn read_header<R: Read>(reader: &mut R) -> io::Result<BoxHeader> {
 				1..=15 => return Err(std::io::Error::new(ErrorKind::InvalidData, "64-bit box size too small")),
 				16..=u64::MAX => largesize,
 			},
+
+			longsize: true,
 		})
 	} else {
 		Ok(BoxHeader {
 			name: BoxType::from(typ),
 			size: size as u64,
+			longsize: false,
 		})
-	}
-}
-
-pub trait BoxHeaderExt {
-	fn set_size(&mut self, content_size: u64);
-}
-
-impl BoxHeaderExt for BoxHeader {
-	fn set_size(&mut self, content_size: u64) {
-		self.size = content_size + 8;
-
-		if self.size > u32::MAX as u64 {
-			// writing will need to use longsize variant
-			self.size += 8;
-		}
 	}
 }

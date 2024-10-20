@@ -1,9 +1,7 @@
-use std::fs::File;
 use std::io;
-use std::path::Path;
 
-use crate::mp4::{Mp4Visitor, read_box};
-use mp4::{BoxHeader, BoxType};
+use crate::mp4::{BoxHeader, Mp4Visitor};
+use mp4::BoxType;
 
 #[derive(Default)]
 pub struct PathVisitor {

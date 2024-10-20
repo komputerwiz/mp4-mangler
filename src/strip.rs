@@ -2,9 +2,9 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
-use mp4::{BoxHeader, BoxType};
+use mp4::BoxType;
 
-use crate::mp4::{read_box, Mp4Visitor};
+use crate::mp4::{BoxHeader, read_box, Mp4Visitor};
 
 pub fn strip(input: &Path, output: &Path, ignore: Vec<BoxType>) -> io::Result<()> {
 	let in_file = File::open(input)?;
@@ -23,28 +23,22 @@ pub fn strip(input: &Path, output: &Path, ignore: Vec<BoxType>) -> io::Result<()
 struct Mp4Box {
 	name: BoxType,
 	data: BoxData,
+	force_longsize: bool,
 }
 
 impl Mp4Box {
-	pub fn new(name: BoxType) -> Self {
-		Self {
-			name,
-			data: BoxData::Empty,
-		}
-	}
-
-	pub fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
+	fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
 		let mut data_buf = Vec::new();
 		self.data.write_to(&mut data_buf)?;
 
 		let mut size = 8 + data_buf.len() as u64;
-		if size > u32::MAX as u64 {
+		if self.force_longsize || size > u32::MAX as u64 {
 			size += 8;
 		}
 
 		let name_id: u32 = self.name.into();
 
-		if size > u32::MAX as u64 {
+		if self.force_longsize || size > u32::MAX as u64 {
 			writer.write_all(&1u32.to_be_bytes())?;
 			writer.write_all(&name_id.to_be_bytes())?;
 			writer.write_all(&size.to_be_bytes())?;
@@ -66,7 +60,7 @@ enum BoxData {
 }
 
 impl BoxData {
-	pub fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
+	fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
 		match self {
 			Self::Empty => Ok(0),
 			Self::Raw(bytes) => {
@@ -108,7 +102,11 @@ impl<'a> Mp4Visitor for StripVisitor<'a> {
 		}
 
 		// NOTE: maintain context for all box types; the "ignore" step will happen later.
-		self.stack.push(Mp4Box::new(header.name));
+		self.stack.push(Mp4Box {
+			name: header.name,
+			data: BoxData::Empty,
+			force_longsize: header.longsize,
+		});
 
 		Ok(())
 	}
@@ -119,8 +117,13 @@ impl<'a> Mp4Visitor for StripVisitor<'a> {
 
 		let mut data: Vec<u8> = Vec::new();
 
+		// blank ignored boxes by changing type to `free` and setting data to `[0; size]`
 		if self.ignore.contains(&current_box.name) {
 			log::info!("skipping data for ignored box type {}", current_box.name);
+			current_box.name = BoxType::FreeBox;
+			let _size = reader.read_to_end(&mut data)?;
+			data.fill(0);
+			current_box.data = BoxData::Raw(data);
 			return Ok(());
 		}
 
@@ -287,11 +290,6 @@ impl<'a> Mp4Visitor for StripVisitor<'a> {
 
 	fn end_box(&mut self, _typ: &mp4::BoxType) -> io::Result<()> {
 		if let Some(exit_box) = self.stack.pop() {
-			if self.ignore.contains(&exit_box.name) {
-				log::info!("skipping ignored box type {}", exit_box.name);
-				return Ok(())
-			}
-
 			if let Some(parent_box) = self.stack.last_mut() {
 				// "write" data to parent box
 				match &mut parent_box.data {

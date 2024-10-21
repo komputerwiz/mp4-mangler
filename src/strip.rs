@@ -2,9 +2,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
-use mp4::BoxType;
-
-use crate::mp4::{BoxHeader, read_box, Mp4Visitor};
+use crate::mp4::{BoxHeader, BoxType, read_box, Mp4Visitor};
 
 pub fn strip(input: &Path, output: &Path, ignore: Vec<BoxType>) -> io::Result<()> {
 	let in_file = File::open(input)?;
@@ -288,7 +286,7 @@ impl<'a> Mp4Visitor for StripVisitor<'a> {
 		Ok(())
 	}
 
-	fn end_box(&mut self, _typ: &mp4::BoxType) -> io::Result<()> {
+	fn end_box(&mut self, _typ: &BoxType) -> io::Result<()> {
 		if let Some(exit_box) = self.stack.pop() {
 			if let Some(parent_box) = self.stack.last_mut() {
 				// "write" data to parent box

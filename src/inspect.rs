@@ -1,17 +1,36 @@
 use std::io;
 
-use crate::mp4::{BoxHeader, Mp4Visitor};
-use mp4::BoxType;
+use crate::mp4::{BoxHeader, BoxType, Mp4Visitor};
 
 #[derive(Default)]
 pub struct PathVisitor {
 	path: Vec<String>,
+	with_size: bool,
+}
+
+impl PathVisitor {
+	pub fn new(with_size: bool) -> Self {
+		Self {
+			with_size,
+			..Default::default()
+		}
+	}
 }
 
 impl Mp4Visitor for PathVisitor {
-	fn start_box(&mut self, header: &BoxHeader, _corrected_size: Option<u64>) -> io::Result<()> {
+	fn start_box(&mut self, header: &BoxHeader, corrected_size: Option<u64>) -> io::Result<()> {
+		let size_description = if self.with_size {
+			if let Some(actual_size) = corrected_size {
+				format!(" ({} B declared, {} B corrected)", header.size, actual_size)
+			} else {
+				format!(" ({} B)", header.size)
+			}
+		} else {
+			"".into()
+		};
+
 		self.path.push(header.name.to_string());
-		println!("{}", self.path.join("/"));
+		println!("{}{}", self.path.join("/"), size_description);
 		Ok(())
   }
 
@@ -22,17 +41,32 @@ impl Mp4Visitor for PathVisitor {
 }
 
 #[derive(Default)]
-pub struct InspectVisitor {
+pub struct PrintTreeVisitor {
 	depth: usize,
+	with_size: bool,
 }
 
-impl Mp4Visitor for InspectVisitor {
-	fn start_box(&mut self, header: &BoxHeader, corrected_size: Option<u64>) -> io::Result<()> {
-		if let Some(size) = corrected_size {
-			println!("{:indent$}{} ({} B declared, {} B corrected)", "", header.name, header.size, size, indent=self.depth * 2);
-		} else {
-			println!("{:indent$}{} ({} B)", "", header.name, header.size, indent=self.depth * 2);
+impl PrintTreeVisitor {
+	pub fn new(with_size: bool) -> Self {
+		Self {
+			with_size,
+			..Default::default()
 		}
+	}
+}
+
+impl Mp4Visitor for PrintTreeVisitor {
+	fn start_box(&mut self, header: &BoxHeader, corrected_size: Option<u64>) -> io::Result<()> {
+		let size_description = if self.with_size {
+			if let Some(actual_size) = corrected_size {
+				format!(" ({} B declared, {} B corrected)", header.size, actual_size)
+			} else {
+				format!(" ({} B)", header.size)
+			}
+		} else {
+			"".into()
+		};
+		println!("{:indent$}{}{}", "", header.name, size_description, indent=self.depth * 2);
 		self.depth += 1;
 
 		Ok(())

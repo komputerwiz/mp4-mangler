@@ -10,10 +10,10 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::Verbosity;
 use env_logger::{Env, Builder};
-use ::mp4::{BoxType, Mp4Reader};
+use ::mp4::Mp4Reader;
 
-use crate::inspect::{ExtractVisitor, InspectVisitor, PathVisitor};
-use crate::mp4::read_box;
+use crate::inspect::{ExtractVisitor, PrintTreeVisitor, PathVisitor};
+use crate::mp4::{BoxType, read_box};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -148,19 +148,9 @@ impl Into<BoxType> for BoxTypeArg {
 
 #[derive(Subcommand)]
 enum Command {
-	/// Attempt to read box/atom structure from the given MP4 file outright
-	Inspect {
-		/// path to target file
-		file: PathBuf,
-
-		/// Perform deep inspection on the given MP4 file (only works with a mostly-well-formed MP4 file)
-		#[arg(long)]
-		deep: bool,
-
-		/// Print paths instead of an indented tree (mutually exclusive with --deep)
-		#[arg(long)]
-		paths: bool,
-	},
+	/// Attempt to read box/atom structure from the given MP4 file
+	#[command(subcommand)]
+	Inspect(InspectCommand),
 
 	/// Extract a specific box payload from the given MP4 file
 	Extract {
@@ -188,6 +178,29 @@ enum Command {
 		/// path to target output file
 		output: PathBuf,
 	},
+}
+
+#[derive(Subcommand)]
+enum InspectCommand {
+	/// Print information about the MP4 box/atom tree structure
+	Tree {
+		/// path to target file
+		file: PathBuf,
+
+		/// Print paths instead of an indented tree
+		#[arg(long)]
+		paths: bool,
+
+		/// Print box sizes
+		#[arg(long)]
+		with_size: bool,
+	},
+
+	/// Perform deep inspection on the given MP4 file by parsing and printing debug-formatted output (only works with a mostly-well-formed MP4 file)
+	Debug {
+		/// path to target file
+		file: PathBuf,
+	}
 }
 
 #[derive(Subcommand)]
@@ -237,21 +250,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	log::trace!("logger initialized");
 
 	match cli.command {
-		Command::Inspect { file, deep, paths } => {
-			let f = File::open(file)?;
-			let size = f.metadata()?.len();
-			let reader = io::BufReader::new(f);
+		Command::Inspect(inspect_command) => match inspect_command {
+			InspectCommand::Tree { file, paths, with_size } => {
+				let f = File::open(file)?;
+				let size = f.metadata()?.len();
+				let reader = io::BufReader::new(f);
 
-			if deep {
+				if paths {
+					let mut visitor = PathVisitor::new(with_size);
+					read_box(reader, size, &mut visitor)?;
+				} else {
+					let mut visitor = PrintTreeVisitor::new(with_size);
+					read_box(reader, size, &mut visitor)?;
+				}
+			},
+
+			InspectCommand::Debug { file } => {
+				let f = File::open(file)?;
+				let size = f.metadata()?.len();
+				let reader = io::BufReader::new(f);
+
 				let mp4 = Mp4Reader::read_header(reader, size)?;
 				println!("{:#?}", mp4);
-			} else if paths {
-				let mut visitor = PathVisitor::default();
-				read_box(reader, size, &mut visitor)?;
-			} else {
-				let mut visitor = InspectVisitor::default();
-				read_box(reader, size, &mut visitor)?;
-			}
+			},
 		},
 
 		Command::Extract { box_type, input, output } => {

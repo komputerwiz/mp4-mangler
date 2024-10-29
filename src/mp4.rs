@@ -109,7 +109,8 @@ boxtype! {
 	SgpdBox => 0x73677064,
 	SbgpBox => 0x73626770,
 	GminBox => 0x676d696e,
-	NmhdBox => 0x6e6d6864
+	NmhdBox => 0x6e6d6864,
+	GnreBox => 0x676e7265
 }
 
 impl fmt::Debug for BoxType {
@@ -257,6 +258,7 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 				| BoxType::SbgpBox
 				| BoxType::GminBox
 				| BoxType::NmhdBox
+				| BoxType::GnreBox
 				=> {
 					// limit visitor's reader to just the contents of this box
 					let content_start = reader.stream_position()?;

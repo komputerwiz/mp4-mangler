@@ -192,7 +192,8 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 
 		// validate header: we expect the header to be 4 ASCII chars
 		if !header.name.validate() {
-			log::warn!("unable to find valid box header; skipping remaining contents");
+			log::warn!("unable to find valid box header at offset {:#x}; skipping remaining contents", current);
+			reader.seek(SeekFrom::Start(end))?;
 			return Ok(reader);
 		}
 

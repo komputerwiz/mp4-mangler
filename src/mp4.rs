@@ -142,6 +142,88 @@ impl BoxHeader {
 	}
 }
 
+#[derive(Debug, Clone)]
+pub struct Mp4Box {
+	pub name: BoxType,
+	pub data: BoxData,
+	pub force_longsize: bool,
+}
+
+impl Mp4Box {
+	pub fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
+		let mut data_buf = Vec::new();
+		self.data.write_to(&mut data_buf)?;
+
+		let mut size = 8 + data_buf.len() as u64;
+		if self.force_longsize || size > u32::MAX as u64 {
+			size += 8;
+		}
+
+		let name_id: u32 = self.name.into();
+
+		if self.force_longsize || size > u32::MAX as u64 {
+			writer.write_all(&1u32.to_be_bytes())?;
+			writer.write_all(&name_id.to_be_bytes())?;
+			writer.write_all(&size.to_be_bytes())?;
+		} else {
+			writer.write_all(&(size as u32).to_be_bytes())?;
+			writer.write_all(&name_id.to_be_bytes())?;
+		}
+
+		writer.write_all(&data_buf)?;
+
+		Ok(size)
+	}
+}
+
+impl fmt::Display for Mp4Box {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		write!(f, "({} {})", self.name, self.data)
+	}
+}
+
+#[derive(Debug, Clone)]
+pub enum BoxData {
+	Empty,
+	Raw(Vec<u8>),
+	Children(Vec<Mp4Box>),
+}
+
+impl BoxData {
+	pub fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
+		match self {
+			Self::Empty => Ok(0),
+			Self::Raw(bytes) => {
+				writer.write_all(&bytes)?;
+				Ok(bytes.len() as u64)
+			},
+			Self::Children(children) => {
+				let mut sum = 0;
+				for child in children {
+					sum += child.write_to(writer)?;
+				}
+				Ok(sum)
+			}
+		}
+	}
+}
+
+impl fmt::Display for BoxData {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			Self::Empty => write!(f, "[empty]"),
+			Self::Raw(_) => write!(f, "[raw]"),
+			Self::Children(children) => {
+				for child in children {
+					writeln!(f, "{}", child)?
+				}
+
+				Ok(())
+			}
+		}
+	}
+}
+
 /// A SAX-style visitor/parser for reading MP4 boxes
 pub trait Mp4Visitor {
 	fn start_box(&mut self, _header: &BoxHeader, _corrected_size: Option<u64>) -> io::Result<()> { Ok(()) }

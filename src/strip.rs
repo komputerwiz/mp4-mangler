@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
-use crate::mp4::{BoxHeader, BoxType, read_box, Mp4Visitor};
+use crate::mp4::{read_box, BoxData, BoxHeader, BoxType, Mp4Box, Mp4Visitor};
 
 pub fn strip(input: &Path, output: &Path, ignore: Vec<BoxType>) -> io::Result<()> {
 	let in_file = File::open(input)?;
@@ -16,64 +16,6 @@ pub fn strip(input: &Path, output: &Path, ignore: Vec<BoxType>) -> io::Result<()
 	read_box(reader, in_file_size, &mut visitor)?;
 
 	Ok(())
-}
-
-struct Mp4Box {
-	name: BoxType,
-	data: BoxData,
-	force_longsize: bool,
-}
-
-impl Mp4Box {
-	fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
-		let mut data_buf = Vec::new();
-		self.data.write_to(&mut data_buf)?;
-
-		let mut size = 8 + data_buf.len() as u64;
-		if self.force_longsize || size > u32::MAX as u64 {
-			size += 8;
-		}
-
-		let name_id: u32 = self.name.into();
-
-		if self.force_longsize || size > u32::MAX as u64 {
-			writer.write_all(&1u32.to_be_bytes())?;
-			writer.write_all(&name_id.to_be_bytes())?;
-			writer.write_all(&size.to_be_bytes())?;
-		} else {
-			writer.write_all(&(size as u32).to_be_bytes())?;
-			writer.write_all(&name_id.to_be_bytes())?;
-		}
-
-		writer.write_all(&data_buf)?;
-
-		Ok(size)
-	}
-}
-
-enum BoxData {
-	Empty,
-	Raw(Vec<u8>),
-	Children(Vec<Mp4Box>),
-}
-
-impl BoxData {
-	fn write_to(&self, writer: &mut impl io::Write) -> io::Result<u64> {
-		match self {
-			Self::Empty => Ok(0),
-			Self::Raw(bytes) => {
-				writer.write_all(&bytes)?;
-				Ok(bytes.len() as u64)
-			},
-			Self::Children(children) => {
-				let mut sum = 0;
-				for child in children {
-					sum += child.write_to(writer)?;
-				}
-				Ok(sum)
-			}
-		}
-	}
 }
 
 struct StripVisitor<'a> {

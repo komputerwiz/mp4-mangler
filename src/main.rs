@@ -1,5 +1,6 @@
 mod inspect;
 mod mangle;
+mod moov_transplant;
 mod mp4;
 mod strip;
 
@@ -14,6 +15,7 @@ use ::mp4::Mp4Reader;
 
 use crate::inspect::{ExtractVisitor, PrintTreeVisitor, PathVisitor};
 use crate::mp4::{BoxType, read_box};
+use crate::moov_transplant::{MoovLocatorVisitor, MoovTransplantVisitor};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -178,6 +180,16 @@ enum Command {
 		/// path to target output file
 		output: PathBuf,
 	},
+
+	/// "Recovers" a corrupted video by splicing in a new moov box/atom contained in the specified file
+	MoovTransplant {
+		/// path to source file containing source moov atom
+		input_moov: PathBuf,
+		/// path to corrupt file
+		input_subject: PathBuf,
+		/// path to output file
+		output: PathBuf,
+	},
 }
 
 #[derive(Subcommand)]
@@ -294,6 +306,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		}
 
 		Command::Strip { ignore, input, output } => strip::strip(&input, &output, ignore.into_iter().map(|x| x.into()).collect())?,
+
+		Command::MoovTransplant { input_moov, input_subject, output } => {
+			let moov_file = File::open(input_moov)?;
+			let moov_file_size = moov_file.metadata()?.len();
+			let moov_reader = io::BufReader::new(moov_file);
+
+			let mut moov_visitor = MoovLocatorVisitor::default();
+			read_box(moov_reader, moov_file_size, &mut moov_visitor)?;
+
+			if let Some(moov_box) = moov_visitor.moov {
+				let in_file = File::open(input_subject)?;
+				let in_file_size = in_file.metadata()?.len();
+				let reader = io::BufReader::new(in_file);
+
+				let out_file = File::create(output)?;
+				let mut writer = io::BufWriter::new(out_file);
+
+				let mut transplant_visitor = MoovTransplantVisitor::new(&mut writer, moov_box);
+				read_box(reader, in_file_size, &mut transplant_visitor)?;
+				transplant_visitor.finish()?;
+			} else {
+				println!("Unable to find moov atom in source file");
+				return Err(io::Error::other("Invalid moov source file").into());
+			}
+		}
 	}
 
 	Ok(())

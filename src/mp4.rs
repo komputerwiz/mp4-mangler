@@ -223,14 +223,9 @@ pub fn read_box<R: Read + Seek>(mut reader: R, end: u64, visitor: &mut impl Mp4V
 		visitor.start_box(&header, corrected_size)?;
 
 		match header.name {
-			// boxes whose contents are ignored
-			BoxType::FreeBox => {
-				log::trace!("skipping over 'free' box");
-				reader.seek(SeekFrom::Start(box_end))?;
-			},
-
 			// non-recursive boxes
-			BoxType::ElstBox
+			BoxType::FreeBox
+				| BoxType::ElstBox
 				| BoxType::FtypBox
 				| BoxType::HdlrBox
 				| BoxType::MdatBox

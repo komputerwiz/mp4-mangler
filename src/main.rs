@@ -7,6 +7,9 @@ mod strip;
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
+use std::process::{self, Command};
+use std::time::{Duration, Instant};
+use std::thread;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::Verbosity;
@@ -24,7 +27,7 @@ struct Cli {
 	verbose: Verbosity,
 
 	#[command(subcommand)]
-	command: Command,
+	command: AppCommand,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -149,7 +152,7 @@ impl Into<BoxType> for BoxTypeArg {
 }
 
 #[derive(Subcommand)]
-enum Command {
+enum AppCommand {
 	/// Attempt to read box/atom structure from the given MP4 file
 	#[command(subcommand)]
 	Inspect(InspectCommand),
@@ -194,6 +197,18 @@ enum Command {
 
 #[derive(Subcommand)]
 enum InspectCommand {
+	/// Tests playability using mpv
+	/// Exits 0 if the file is playable or 1 if the file is unplayable
+	IsPlayable {
+		/// amount of time to test playability (in milliseconds)
+		/// input file is considered playable if this time elapses and mpv hasn't exited
+		#[arg(short = 't', long = "timeout", default_value = "300")]
+		timeout_ms: u64,
+
+		/// path to target file
+		file: PathBuf,
+	},
+
 	/// Print information about the MP4 box/atom tree structure
 	Tree {
 		/// path to target file
@@ -262,7 +277,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 	log::trace!("logger initialized");
 
 	match cli.command {
-		Command::Inspect(inspect_command) => match inspect_command {
+		AppCommand::Inspect(inspect_command) => match inspect_command {
+			InspectCommand::IsPlayable { timeout_ms, file } => {
+				log::trace!("spawning mpv");
+				let mut mpv = Command::new("mpv").arg(file).spawn()?;
+
+				let start_time = Instant::now();
+				let poll_interval = Duration::from_millis(100.min(timeout_ms));
+				let timeout = Duration::from_millis(timeout_ms);
+
+				let is_playable = loop {
+					if let Some(exit_status) = mpv.try_wait()? {
+						log::trace!("mpv exited");
+						// mpv exited; reflect exit status
+						break exit_status.success();
+					}
+
+					if start_time.elapsed() >= timeout {
+						log::trace!("killing mpv");
+						// video is playing; terminate the process
+						mpv.kill()?;
+						break true;
+					}
+
+					thread::sleep(poll_interval);
+				};
+
+				process::exit(if is_playable {
+					log::info!("file is playable");
+					0
+				} else {
+					log::info!("file is not playable");
+					1
+				});
+			},
+
 			InspectCommand::Tree { file, paths, with_size } => {
 				let f = File::open(file)?;
 				let size = f.metadata()?.len();
@@ -287,7 +336,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			},
 		},
 
-		Command::Extract { box_type, input, output } => {
+		AppCommand::Extract { box_type, input, output } => {
 			let in_file = File::open(input)?;
 			let in_file_size = in_file.metadata()?.len();
 			let reader = io::BufReader::new(in_file);
@@ -299,15 +348,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 			read_box(reader, in_file_size, &mut visitor)?;
 		},
 
-		Command::Mangle(mangle_command) => match mangle_command {
+		AppCommand::Mangle(mangle_command) => match mangle_command {
 			MangleCommand::Flip { count, file } => mangle::flip_bits(&file, count)?,
 			MangleCommand::Blank { count, block_size, file } => mangle::blank_blocks(&file, count, block_size)?,
 			MangleCommand::Truncate { amount, file } => mangle::truncate(&file, amount)?,
 		}
 
-		Command::Strip { ignore, input, output } => strip::strip(&input, &output, ignore.into_iter().map(|x| x.into()).collect())?,
+		AppCommand::Strip { ignore, input, output } => strip::strip(&input, &output, ignore.into_iter().map(|x| x.into()).collect())?,
 
-		Command::MoovTransplant { input_moov, input_subject, output } => {
+		AppCommand::MoovTransplant { input_moov, input_subject, output } => {
 			let moov_file = File::open(input_moov)?;
 			let moov_file_size = moov_file.metadata()?.len();
 			let moov_reader = io::BufReader::new(moov_file);

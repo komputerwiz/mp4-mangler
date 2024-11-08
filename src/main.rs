@@ -7,7 +7,7 @@ mod strip;
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
-use std::process::{self, Command};
+use std::process::{self, Command, Stdio};
 use std::time::{Duration, Instant};
 use std::thread;
 
@@ -280,7 +280,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		AppCommand::Inspect(inspect_command) => match inspect_command {
 			InspectCommand::IsPlayable { timeout_ms, file } => {
 				log::trace!("spawning mpv");
-				let mut mpv = Command::new("mpv").arg(file).spawn()?;
+				let mut mpv = Command::new("mpv").arg(file)
+					.stderr(if log::log_enabled!(log::Level::Debug) { Stdio::inherit() } else { Stdio::null() })
+					.stdout(if log::log_enabled!(log::Level::Trace) { Stdio::inherit() } else { Stdio::null() })
+					.spawn()?;
 
 				let start_time = Instant::now();
 				let poll_interval = Duration::from_millis(100.min(timeout_ms));

@@ -234,30 +234,43 @@ enum InspectCommand {
 enum MangleCommand {
 	/// flips random bits in the given file
 	Flip {
+		/// Use percentage (0 to 100) of file size rather than an absolute number of bits (overrides count)
+		#[arg(short, long, group = "amount")]
+		percent: Option<f64>,
 		/// number of random bits to flip
-		#[arg(short, long, default_value = "1")]
-		count: usize,
+		#[arg(short, long, group = "amount")]
+		count: Option<u64>,
 		/// path to target file
+		#[arg(requires = "amount")]
 		file: PathBuf,
 	},
 
 	/// sets a block of data to zeroes
 	Blank {
+		/// Use percentage (0 to 100) of file size rather than an absolute number of blocks (overrides count)
+		#[arg(short, long, group = "amount")]
+		percent: Option<f64>,
 		/// number of random blocks to blank out
-		#[arg(short, long, default_value = "1")]
-		count: usize,
+		#[arg(short, long, group = "amount")]
+		count: Option<u64>,
 		/// size of block in bytes
 		#[arg(short, long, default_value = "4096")]
 		block_size: u64,
 		/// path to target file
+		#[arg(requires = "amount")]
 		file: PathBuf,
 	},
 
 	/// truncates data from the end of the file
 	Truncate {
+		/// Use percentage (0 to 100) of file size rather than an absolute number of bytes (overrides bytes)
+		#[arg(short, long, group = "amount")]
+		percent: Option<f64>,
 		/// length of data to truncate in bytes
-		amount: u64,
+		#[arg(short, long, group = "amount")]
+		bytes: Option<u64>,
 		/// path to target file
+		#[arg(requires = "amount")]
 		file: PathBuf,
 	}
 }
@@ -352,9 +365,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 		},
 
 		AppCommand::Mangle(mangle_command) => match mangle_command {
-			MangleCommand::Flip { count, file } => mangle::flip_bits(&file, count)?,
-			MangleCommand::Blank { count, block_size, file } => mangle::blank_blocks(&file, count, block_size)?,
-			MangleCommand::Truncate { amount, file } => mangle::truncate(&file, amount)?,
+			MangleCommand::Flip { percent, count, file } => mangle::flip_bits(&file, (percent.map(|p| p / 100.0), count).try_into()?)?,
+			MangleCommand::Blank { percent, count, block_size, file } => mangle::blank_blocks(&file, (percent.map(|p| p / 100.0), count).try_into()?, block_size)?,
+			MangleCommand::Truncate { percent, bytes, file } => mangle::truncate(&file, (percent.map(|p| p / 100.0), bytes).try_into()?)?,
 		}
 
 		AppCommand::Strip { ignore, input, output } => strip::strip(&input, &output, ignore.into_iter().map(|x| x.into()).collect())?,

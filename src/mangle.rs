@@ -82,6 +82,8 @@ pub fn flip_bits(file: &Path, bits_amount: Amount) -> io::Result<()> {
 		f.write_at(&buf, byte_offset)?;
 	}
 
+	log::info!("Flipped {} bit{}", num_bits, if num_bits == 1 { "" } else { "s" });
+
 	Ok(())
 }
 
@@ -117,6 +119,8 @@ pub fn blank_blocks(file: &Path, blocks_amount: Amount, block_size_bytes: u64) -
 		f.write_at(&bad_block[0..end], block_offset * block_size_bytes)?;
 	}
 
+	log::info!("Blanked {} block{}", num_blocks, if num_blocks == 1 { "" } else { "s" });
+
 	Ok(())
 }
 
@@ -133,7 +137,7 @@ pub fn truncate(file: &Path, bytes_amount: Amount) -> io::Result<()> {
 
 	f.set_len(file_size_bytes - num_bytes)?;
 
-	log::debug!("Truncated {} bytes from end of file.", num_bytes);
+	log::info!("Truncated {} byte{}", num_bytes, if num_bytes == 1 { "" } else { "s" });
 
 	Ok(())
 }

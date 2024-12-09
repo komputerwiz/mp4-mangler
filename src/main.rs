@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use std::thread;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use clap_verbosity_flag::Verbosity;
+use clap_verbosity_flag::{InfoLevel, Verbosity};
 use env_logger::{Env, Builder};
 use ::mp4::Mp4Reader;
 
@@ -24,7 +24,7 @@ use crate::moov_transplant::{MoovLocatorVisitor, MoovTransplantVisitor};
 #[command(author, version, about, long_about = None)]
 struct Cli {
 	#[command(flatten)]
-	verbose: Verbosity,
+	verbose: Verbosity<InfoLevel>,
 
 	#[command(subcommand)]
 	command: AppCommand,

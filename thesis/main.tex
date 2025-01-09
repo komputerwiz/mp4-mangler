@@ -1,0 +1,246 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  New template code for TAMU Theses and Dissertations starting Spring 2021.
+%
+%
+%  Last Updated: 1/13/2021
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% THIS TEMPLATE IS THE MOST
+% CURRENT. SEE THE FILES README.TXT AND NEWCHANGES.TXT
+% FOR MORE INFORMATION.
+
+\documentclass[12pt]{report}
+
+\usepackage{tamuconfig}
+
+
+% Most of the packages that set the default settings
+% for the document have moved to the style file
+% tamuconfig.sty. This includes
+
+%These next lines change the font. Fixes for certain
+%fonts will be implemented in a future release.
+
+%Comment this line if you do not wish to use Times
+%New Roman. The font used will then be the LaTeX
+%default of Computer Modern.
+\usepackage{times}
+%\usepackage{cmbright}
+\usepackage[T1]{fontenc}
+
+% For natbib-style references, uncomment this.
+%\usepackage{natbib}
+
+%This package allows for the use of graphics in the
+%document.
+\usepackage{graphicx}
+
+%If you have JPEG format images, add .jpg as an
+%allowed file extension below. Same for Bitmaps (.bmp).
+\DeclareGraphicsExtensions{.png}
+
+%It is best practice to keep all your pictures in
+%one folder inside the main directory in which your
+%TeX file is kept. Here the folder is named "graphic."
+%Replace the name here with your folder's name, if needed.
+%The period is needed due to relative referencing.
+\graphicspath{ {./graphic/} }
+
+% For quick document navigation.
+\usepackage[hidelinks]{hyperref}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Please place all your personal packages here. Check to
+%see if the packages you wish to use are not already
+%declared above. Placing all your personal packages
+%here allows me to determine if there are any package
+%issues in compilation, as well as any conflicts
+%that may arise by the order of loading.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Begin student defined packages.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\usepackage[style=ieee]{biblatex}
+\addbibresource{bibliography.bib}
+
+\usepackage{amsmath}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{listings, listings-rust}
+\usepackage{svg}
+
+\newcounter{hypothesiscounter}
+\setcounter{hypothesiscounter}{0}
+\newenvironment{hypothesis}[1][]{\refstepcounter{hypothesiscounter}\par\medskip \noindent\textbf{Hypothesis~\thehypothesiscounter.} \it #1}{\medskip}
+
+% listings style
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{manglerstyle}{
+    %backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegray},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\linespread{0.8}\ttfamily\small,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=manglerstyle}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%End student defined packages.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% End preamble. Document begins below.
+
+\begin{document}
+
+%The title of your document goes here.
+%Spacing may need to be adjusted if your title is long
+%and pushes the copyright off the page.
+\renewcommand{\tamumanuscripttitle}{Analysis of Data Corruption, Preservation, and Recovery of MP4 Media File Playability}
+
+
+%Type only Thesis, Dissertation, or Record of Study.
+\renewcommand{\tamupapertype}{Thesis}
+
+%Your full name goes here, as it is in university records. Check your student record on Howdy if there is any mismatch.
+\renewcommand{\tamufullname}{Matthew J. Barry}
+
+%The degree title goes here. See the GPS site for more info.
+\renewcommand{\tamudegree}{Master of Science, Computer Science}
+\renewcommand{\tamuchairone}{John Andrew Hamilton, Ph. D.}
+
+
+% Uncomment out the next line if you have co-chairs.  You will also need to edit the titlepage.tex file.
+%\newcommand{\tamuchairtwo}{Additional Chair Name}
+\renewcommand{\tamumemberone}{Riccardo Bettati, Ph. D.}
+\newcommand{\tamumembertwo}{Jyh-Charn Liu, Ph. D.}
+\newcommand{\tamumemberthree}{Jeyavijayan Rajendran, Ph. D.}
+\renewcommand{\tamudepthead}{Scott Schaefer, Ph. D.}
+
+%Type only May, August, or December.
+\renewcommand{\tamugradmonth}{May}
+\renewcommand{\tamugradyear}{2024}
+%Your department name goes here.
+\renewcommand{\tamudepartment}{Computer Science and Engineering}
+
+
+\include{include/00-titlepage} % This is simply a file that formats and adds your titlepage, please do not edit this unless you have a specific need.
+
+\pagestyle{plain} % No headers, just page numbers
+\pagenumbering{roman} % Roman numerals
+\setcounter{page}{2}
+
+\include{include/01-abstract}
+\include{include/02-dedication}
+\include{include/03-acknowledgements}
+\include{include/04-contributors}
+\include{include/05-nomenclature}
+
+\include{include/06-lists}  % This is simply a file that formats and adds your toc, lof, and lot, please do not edit this unless you have a specific need.
+
+\pagestyle{plain} % No headers, just page numbers
+\pagenumbering{arabic} % Arabic numerals
+\setcounter{page}{1}
+
+\include{include/07-content}
+
+%fix spacing in bibliography, if any...
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\let\oldbibitem\bibitem
+\renewcommand{\bibitem}{\setlength{\itemsep}{0pt}\oldbibitem}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%The bibliography style declared is the IEEE format. If
+%you require a different style, see the document
+%bibstyles.pdf included in this package. This file,
+%hosted by the University of Vienna, shows several
+%bibliography styles and examples of in-text citation
+%and a references page.
+%if using BibTeX...
+%\bibliographystyle{ieeetr}
+
+\phantomsection
+\addcontentsline{toc}{chapter}{REFERENCES}
+
+\renewcommand{\bibname}{{\normalsize\rm REFERENCES}}
+
+%This file is a .bib database that contains the sources.
+%This removes the dependency on the previous file
+%bibliography.tex.
+%if using BibTeX
+%\bibliography{../bibliography}
+
+%% Lit. review 2024-03-22
+%
+%% Datasets:
+%\nocite{shullani2017}
+%\nocite{yang2020}
+%\nocite{baracchi2023}
+%
+%% MP4 Structural Analysis:
+%\nocite{zhao2010}
+%\nocite{gloe2014}
+%\nocite{xiang2021}
+%\nocite{hasan2021}
+%\nocite{xiang2023}
+%
+%% Manipulation Detection and General Foensics:
+%\nocite{milani2012}
+%
+%% Steganography:
+%\nocite{hemalatha2017}
+%
+%% Recovery of Corrupted Videos:
+%\nocite{na2014}
+%\nocite{padmanaban2015}
+%\nocite{mary2020}
+%\nocite{hoang2020}
+%
+%% Data Preservation and Encoding
+%\nocite{zhang2004}
+%\nocite{chen2011}
+%
+%% File Carving:
+%\nocite{pal2009}
+%\nocite{poisel2013}
+%\nocite{alghafli2016}
+%
+%% Uncategorized:
+%\nocite{huston2004}
+%\nocite{lewis2012}
+%\nocite{poisel2011}
+
+% parallel experimentation supported in part by GNU Parallel
+\nocite{gparallel}
+
+\printbibliography
+
+
+%This next line includes appendices. The file
+%appendix.tex contains commands pointing to
+%the appendix files; be sure to change these
+%pointers if you end up changing the filenames.
+%Leave this commented if you will not need
+%appendix material.
+\include{include/08-appendices}
+
+
+\end{document}

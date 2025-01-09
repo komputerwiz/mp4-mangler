@@ -1,0 +1,6 @@
+\chapter{Conclusion}
+\label{cha:conclusion}
+
+Of all the methods in the corruption model, truncation had the most profound effect at low levels and is the most likely cause of spontaneously unplayable MP4 files. This is because the metadata required for playback is often placed at the end of an MP4 file. Relocating this metadata to the beginning of the file can successfully preserve a file's playability even when subjected to significant amounts of truncation. This modification in file structure also solves another known problem when playing MP4 files stored on remote systems: Loading the metadata ahead of the media data allows media players to begin playback immediately while the file transfer continues; hence, this is known as the ``faststart'' problem.
+
+The interesting trends in survivability for both bit-flipping and truncation merit further investigation. Bit-flipping was expected to have the weakest effect on playability but ended up having the strongest for a singular peak before returning to a small likelihood. This could also be due to an error in the experiment's implementation or execution. Truncation also had a mysterious dip in its graph where truncation of the ``correct'' amount might leave a file playable when any amount higher or lower might break this playability.

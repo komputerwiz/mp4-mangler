@@ -1,0 +1,133 @@
+\chapter{\uppercase{Literature Review}}
+
+Video formats, particularly the MP4 container format, have been the subject of much research in digital forensics due to the wealth of information they contain. Their widespread publication and availability on social Internet forums and the massive variety of recording devices, especially smartphones, ease the spread of compelling narratives. For this reason, videos are also of great value to any type of forensic investigation. Feeds from security cameras, dashcams, and even mounted GoPro-style cameras capture objective evidence of how historical events unfolded from the perspective of a first-person observer.
+
+\section{MP4 Metadata Structure and Interpretation}
+
+From an outside perspective, MP4 video files contain a tremendous amount of data: a single video that is only a few minutes in duration can have a file size approaching hundreds of megabytes, depending on the quality. Most of this, however, is occupied by the stream data. The metadata, in contrast, is only a few kilobytes in total and can be scattered anywhere throughout the file.
+
+The MP4 file structure is hierarchical, and its prohibitive size prevents the entire tree from being loaded into memory directly. Traversing the tree in its entirety might require multiple passes through the file, which can severely impact read performance. An optimal approach for parsing MP4 metadata is to use an event-based parser that reads the file in a single pass, noting the file offsets where various metadata of interest occur \cite{zhao2010}. This approach uses a stack structure to record its traversal state since it encounters nested nodes in a depth-first fashion. Similar methods exist for parsing other types of hierarchical data efficiently: namely, SAX for parsing XML \cite{fegaras2004}.
+
+\section{Data Corruption}
+
+Digital forensics often requires sifting through incomplete, fragmented, or otherwise corrupted data. Such damage to a file's data stems from various causes and can occur when data is ``in transit'' between storage devices and when it is ``at rest'' on a single isolated storage device.
+
+\subsection{Corruption in Transit}
+
+Although often overlooked as such, copying data between locations within a single device is a form of data transfer. As with the scribes and historians of old, transcription errors can arise when copying data from one place to another. In a digital device, failures in the electrical hardware are likely causes of such errors. More often, however, data transfers occur between devices over a network.
+
+The physical layer is the lowest level of Internet Protocol (IP) network infrastructure and has implementations using various wired (e.g., coaxial, Ethernet) and wireless (e.g., 802.11) technologies. At this level, network transmissions are prone to interference and noise from external sources and network hardware failures from within. These can introduce errors in the transmitted signal, thereby reducing the connection reliability. Transmission Control Protocol (TCP) offers a robust means of data transfer over these potentially unreliable connections at the expense of communication and computational overhead. On the other hand, User Datagram Protocol (UDP) provides a simple and fast way to relay data between two networked devices without the overhead. Still, these communications are susceptible to data corruption in transit.
+
+\subsubsection{Dropped Packets}
+
+When transmitting large amounts of data, the sending software splits the original data into multiple smaller segments or packets, which the receiver then reassembles. Some of these packets may be delayed or lost, and the data they contain will be out of order or missing entirely in the reassembly. TCP contains packet sequence numbers to enforce correct ordering and requires acknowledgment of each transmitted packet \cite{cerf1974}. Failure to receive an acknowledgment will result in packet retransmission, and unexpected errors in sequence numbering will trigger a connection reset. In the end, the receiver can know with confidence that all packets will received and reassembled in the proper order, but this confidence comes at the cost of doubling the number of exchanges. Every transmitted data packet must have an accompanying acknowledgment returned to the original sender. This overhead prevents devices from taking advantage of the total available network bandwidth.
+
+For live media streams, maximizing the amount of information bandwidth maximizes the perceived quality of the media, so applications generally prefer UDP for this purpose. The downside is that UDP does not detect or correct either issue, so the application layer must handle problems. Padmanaban and Ilow \cite{padmanaban2015} explored ways to handle dropped network packets from H.264 video streams. Their method relies on the fact that H.264 already packetizes its stream data. In addition to sending the video packets, this approach sends interspersed parity packets from which the receiver can reconstruct dropped video packets if necessary. This manner of reconstruction requires support at both ends of the communication: the sender must encode the parity packets, and the receiver/player must know how to take advantage of them.
+
+\subsubsection{Random Transmission Errors (Bit Flips)}
+
+One of the mechanisms used by TCP to ensure reliability is a computed checksum for each packet \cite{cerf1974}. This checksum determines whether any transmission errors occurred and, in some cases, enables the receiver to correct them. In the former case, the recipient could withhold acknowledgment for a packet containing a checksum mismatch and wait for the sender to reattempt transmission. However, computing and verifying checksums require even more overhead and further reduce usable bandwidth. This overhead is yet another reason why UDP is favored for live video streams. Padmanaban's method above provides a way to use parity data to identify and correct bit flips as part of a live stream.
+
+\subsubsection{Premature Stream Termination (Truncation)}
+
+All forms of network transmissions are susceptible to sudden termination. This connectivity issue can arise from several causes, such as the loss of an intermediate network device, removal or severing of transmission lines, termination of the software performing the sending or receiving, etc. In any case, the receiver has only a partial copy of the intended data. The worst-case scenario for this type of error is when it occurs silently, leading the user to believe the transmission is complete when, in fact, it has failed. In the case of media files, this can occur when recording data from a live stream (e.g., security footage or a digital broadcast) that is interrupted or otherwise ends abruptly.
+
+This type of corruption is not limited to transit over a network. For example, when copying a large file to a removable storage device, the operating system typically copies the file into an in-memory buffer. Doing so helps to keep the operating system responsive to other tasks while data is flushed from this buffer to the storage device asynchronously. As part of the device unmounting or ``safe removal'' process, the operating system ensures that any such cache buffers are flushed completely. However, if the storage device is removed without being safely unmounted, the operating system may not have finished writing transferred files. Files that occupy a large amount of storage (a characteristic of most media files) are particularly prone to unsafe removal. Partially written copied files can be especially troublesome if the target destination is a backup that may need to be used to recover the files later. In the event of such a recovery, a user would be troubled to find that the supposedly backed-up files are, in reality, not recoverable.
+
+\subsection{Corruption at Rest}
+
+Data in transit is particularly vulnerable due to the number of problems that can arise when transcribing the data. Once data is written to a (non-volatile) storage medium, we might consider the data safe from any corruption. On the contrary, storage devices themselves are prone to data degradation.
+
+How storage degrades over time is dependent on the storage technology in use. Here are some common storage methods and how they can fail with age:
+
+\begin{itemize}
+    \item \emph{Mechanical} storage devices, such as hard drive disks (HDDs), depend on finely tuned moving parts that can wear out, drift, or break due to physical shock, whereas \emph{solid-state} storage devices are more durable in this regard.
+    \item \emph{Magnetic} storage, such as tapes, HDDs, and floppy disks, can weaken over time when exposed to heat or external magnetic fields (such as that of the earth) or other electromagnetic sources.
+    \item \emph{Electrical} storage, such as flash memory, often relies on keeping a capacitor at a specific voltage, but electrons can drain slowly as the dielectric material wears out with use and age. Flash memory is particularly vulnerable due to destructive write operations.
+    \item \emph{Optical} storage, such as compact disks (CDs), digital versatile disks (DVDs), and Blu-ray disks, are susceptible to warping and scratches. However, with the proper materials and care, this storage category is generally considered the most stable for single-volume, long-term digital storage. The mechanical drive or reader may wear out eventually, but the data storage medium tends to be robust. \footnote{Optical storage is a class of other physical storage methods that can be "etched" into a physical medium. Such strategies tend to be ``write-once, read-only.'' By contrast, other energy-based storage methods rely on preserving some type of energy gradient. Such states have a natural tendency to return to an equilibrium. These strategies can be erased and rewritten.}
+\end{itemize}
+
+\subsubsection{Bit Rot}
+
+Regardless of the storage technology in use, corruption at rest arises from the physical properties of the storage medium. Degradation over time eventually leads to errors during data retrieval: what was once a 0 might now be interpreted as a 1 or vice versa. The storage device is still operational, but its data might need to be refreshed to ``full potency.'' The term \emph{bit rot} describes this general type of operational degradation. \cite{gibson1993}
+
+Many modern storage technologies use error correction to improve storage density and lifetime. As bit rot begins to occur, read performance will degrade as the device must correct any misread bits. However, older and simpler storage devices may not have any forms of error detection and correction: the bits read from the device are sent verbatim to the operating system.
+
+\subsubsection{Sector Read Errors}
+
+Storage devices, filesystems, and operating systems all tend to work with data in equal-sized chunks called \emph{sectors}. This term originates in rotating storage media: as the medium rotates, the read/write head sweeps out an arc or sector along the surface as it reads the requested data. If a sector contains too many bit errors for the on-device error correction to handle, the device will report a read failure, leaving a gap in the retrieved data. Any damage or imperfections in the storage medium can cause similar failures when reading the affected sectors. In the case of SCSI- and SATA-connected (magnetic) hard disk drives, vendors specify an error rate of one error per \( 10^{13} \) to \( 10^{16} \) bits read. \cite{gray2007} These read errors can also manifest as bit rot.
+
+\subsubsection{Fragmentation}
+
+While not a form of corruption \emph{per se}, the block-based nature of filesystems can lead to fragmentation. This occurs when blocks containing a file's data cannot be stored contiguously in the storage medium. Fragmentation becomes problematic for interpreting video data when the filesystem metadata governing the location and ordering of blocks is damaged or no longer present. Such situations arise when recovering deleted files or quick-formatted storage volumes.
+
+\section{Data Integrity and Preservation}
+
+\subsection{Transmission Validation}
+
+Savvy users know the potential for transmission errors or foul play when downloading large or important files from the Internet. Hence, a commonly recommended practice is to validate a file's integrity against a published checksum, hash, or cryptographic signature provided by the original file's author. A validation failure indicates a problem with the downloaded file, in which case the download should be reattempted, perhaps from an alternate mirror if multiple hosting servers are available.
+
+\subsection{Multiple Volume Storage: RAID}
+
+Fortunately, bit rot and sector read errors are relatively easy to prevent: RAID arrays (levels 2--6) maintain parity information that allows information to be recovered in the event of read errors or hardware failures \cite{chen1994}. All RAID systems have a limited redundancy threshold representing the number of disk failures that can be tolerated. RAID's error correction detects problems only when reading the data, and, as previously mentioned, errors can aggregate silently over time. If left unchecked, the data could still degrade to the point where it is no longer recoverable. Modern software RAID systems such as ZFS and BTRFS address this shortcoming by proactively and periodically ``scrubbing'' the data to maintain its integrity \cite{zfs} \cite{zfs-scrub} \cite{btrfs}. A scrub operation reads all stored data to check for and repair any errors, which prevents silent errFors from accumulating.
+
+%\subsection{Cloud Storage}
+%TODO: Analysis of data corruption in the storage stack \cite{bairavasundaram2008}.
+
+\section{Data Recovery}
+
+\subsection{Filesystem-Based Recovery: File Carving}
+
+Regardless of the type or source of corruption, recovering usable data from a corrupted source requires considerable effort and is not always successful. Methods such as file carving \cite{pal2009} \cite{poisel2013} attempt to recover a file's original content from remnants of filesystem metadata. File carving recovers deleted files from the ``free space'' on a storage medium. When deleting a file, the operating system only marks the file's allocated blocks as unused, but the blocks themselves (and file data therein) remain intact until they are overwritten. Large files that span multiple blocks become fragmented when the blocks used to store a file are not contiguous within the storage medium. This is often the case for video files due to their size.
+
+Early file carving tools like Scalpel \cite{richard2005} did not compensate for filesystem fragmentation. Poisel and Tjoa recognized this problem and outlined a ``roadmap'' to develop a file carving technique for fragmented multimedia files \cite{poisel2011}. Casey and Zoun explored tradeoffs for methods that produce longer playable fragments versus many shorter fragments and found the total duration of recovered video varies by case and method \cite{casey2014}. Na \emph{et al.} \cite{na2014} propose using H.264 frame headers to identify video stream data across multiple blocks and then arrange those blocks into a valid video file. Other recent tools like VidCarve \cite{alghafli2016} similarly account for fragmentation and, in this case, have been tailored specifically for recovering video files.
+
+File carvers for video data maintain a metadata index and attempt to match available movie data. Carvers generally discard segments of movie data without a matching header because they are unplayable.  , data becomes spliced into another video file because of a false positive match in the metadata index. Generally, file carving assumes the presence of all video data and metadata needed to construct a playable video, but it often struggles to assemble video file fragments in the proper order. When only partial video data or metadata is available, file carving produces unexpected results.
+
+\subsection{Stream-Based Recovery Methods}
+
+\subsubsection{Noise reduction}
+
+Theoretically, the media data contained in a stream---assuming it can be properly decoded from its container---represents an ordered signal, and any corruption could be classified as introducing some random interference. Stated differently, the signal represents some function we wish to recover, and the data corruption is an undesired alteration to the output of the signal function. From this perspective, data recovery takes the form of noise reduction within the realm of signal processing. Fourier transforms and wavelet decompositions are well-known tools in this area and have been used in the recovery of degraded audio \cite{godsill1993} \cite{simon1993} and image \cite{weaver1991} \cite{john2020} data.
+
+\subsubsection{Frame Reconstruction}
+
+Zhang and Stevenson \cite{zhang2004} proposed an alternate video encoding method consisting of parallel streams, allowing dropped frames in one stream to be reconstructed from nearby frames in an alternate stream. Chen \emph{et al.} \cite{chen2011} explored using steganography to embed recovery data directly within an H.264 stream.
+
+Corrupted video data can originate from online sources as well. Transmission errors from live-streamed video sources require live error detection, correction, and, if that fails, recovery. 
+
+More recently, Mary P. D. \emph{et al.} \cite{mary2020} and Hoang \emph{et al.} \cite{hoang2020} have developed tensor completion techniques for filling in missing pixels in degraded video frames. However, as mentioned previously, all of these methods operate at the stream level, and their success depends on intact and well-formed MP4 container metadata.
+
+\section{Available MP4 Video Datasets}
+
+Datasets like the one developed by Gloe \cite{gloe2014} as well as VISION \cite{shullani2017} and FloreView \cite{baracchi2023} aggregate hundreds---even thousands---of media files from dozens of devices for comparative metadata analysis and research. The latter dataset even uses the same subjects across all media captures. The EVA-7K \cite{yang2020} dataset includes videos modified by various video editing software and shared online through common social platforms. These datasets are intended for comparative analysis to identify a video's origin and any possible manipulation.
+
+\section{Honorable Mention}
+
+A survey of the current state of digital forensics, especially that which is pertinent to media data, would be incomplete without including some significant areas of interest. These topics may not be readily or obviously applicable to the research presented here, but they are nonetheless vital to understanding current problems. Perhaps someone else will find the material presented here helpful.
+
+\subsection{Manipulation and Deepfake Detection}
+
+In the past, video evidence was regarded as indisputable. The underlying assumption was that video would be extremely difficult or impossible to fabricate. Video manipulation methods were primitive and left noticeable artifacts in the resulting videos. Today, video editing software is more widely available and has improved, making it more challenging to identify edits visually. Moreover, with the recent introduction of ``deepfakes'' created by artificial intelligence, verifying a video's authenticity is crucial before trusting its content. Manipulation detection is a valuable defense against the effects of disinformation campaigns in today's Internet-connected culture.
+
+\subsubsection{Pixel-based Methods}
+
+Early work in pixel-based manipulation detection focused primarily on detecting visual artifacts or comparing similarities with a known original video \cite{milani2012}. However, as editing software has improved, these artifacts are becoming more challenging to identify. In some cases, distinguishing between an original video and a modified version might not be possible from visual indicators alone.
+
+The ubiquity of artificial intelligence for handling visual information and identifying subtle patterns has led to the irony of ``fighting fire with fire:'' the same tactics used to make some oTxf the most compelling manipulated or fabricated videos are being used to identify them. Rana \emph{et al.} identified 112 studies between 2018 and 2020 for deepfake detection alone \cite{rana2022}, 86 of which used a form of deep learning or machine learning. Facial recognition accounts for most of these strategies since generated videos are not likely to reconstruct an individual subject's facial features perfectly. The success of these pixel-based approaches depends on the machine learning model used. As evidenced by the large number of studies, researchers have developed an ever-widening selection of models from which to choose.
+
+\subsubsection{Metadata-based Methods}
+
+The metadata embedded within video files can provide an audit trail and clues about a video file's origin. This information can be direct, such as an embedded ``Edited by such-and-such software'' comment or marking, but an adversary with intent to deceive would likely strip out such apparent indicators. Hence, manipulation detection methods that rely on more subtle markings are invaluable for forensic investigation. MP4's metadata structure allows for ample variation while remaining true to the specification, and different recording devices or editing software tend to leave their own ``fingerprint'' in the metadata of the files they produce.
+
+Xiang \emph{et al.} developed methods for analyzing this metadata using nearest-neighbor classification \cite{xiang2021} and self-supervised neural networks \cite{xiang2023}. Metadata-based manipulation detection may provide a more reliable means of manipulation and deepfake detection over pixel-based methods as video manipulation tactics continue to improve.
+
+\subsection{Steganography}
+
+MP4 videos can also provide an enormous cover for surreptitiously embedding additional data. Hemalatha \emph{et al.} developed a way to embed secret audio and image data in the wavelet domain of each of the cover video's streams \cite{hemalatha2017}. Their method offers increased payload capacity and a better signal-to-noise ratio than prior video steganography methods.
+
+Steganography greatly interests the broader digital forensics field but may seem less applicable to video recovery. On the contrary, there is some relationship between these pursuits. Steganography aims to embed data without any recognizable effect on the cover data. However, any changes to the cover data invariably result in artifacts or signal degradation to some degree since a certain amount of its former bandwidth is hijacked for use by the embedded signal. In the case of video cover data, the video recovery methods mentioned above could reverse the embedding process, returning the original video to a closer approximation of the original data. If the embedded data is also a video stream, the above video recovery methods could reduce the bandwidth needed to perform the embedding. Moreover, as previously discussed in \cite{chen2011}, steganography can embed arbitrary recovery information in the data itself.
+
+\section{Summary}
+
+The existing literature demonstrates a need for further research into how intact MP4 video files might become unplayable over time. All of the identified prior research assumes that files remain consistently playable, but experience demonstrates that an MP4 file's viability is not guaranteed. Existing methods such as file carving offer some insight into how potentially fragmented video files might be reassembled, but this process itself often leads to unplayable videos. Moreover, file carving attempts to recover the file contents exactly, so a file that was already unplayable prior to carving will be unplayable even after a successful recovery. Other recovery methods operate at the codec level, repairing errors in the media stream rather than in the container itself. Fortunately, the general ways in which data can become corrupted are well-known and succinctly enumerated, but have not been applied to their effect on MP4 files. To our knowledge, the research presented in this thesis is the first to document and investigate this phenomenon in a rigorous academic setting.

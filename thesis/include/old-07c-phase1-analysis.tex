@@ -1,0 +1,192 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  New template code for TAMU Theses and Dissertations starting Spring 2021.
+%
+%
+%  Author: Thesis Office
+%
+%  Last Updated: 1/13/2021
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                           SECTION III
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{\uppercase{Phase 1: Analysis of File Corruption}}
+
+We begin by exploring the various ways that the contents of a file might become corrupted:
+
+\begin{itemize}
+	\item \textbf{Random Bit-Flipping or ``bit rot.''} Occasionally, random bits of data can become inverted.
+	\item \textbf{Segment/sector ``blanking.''} A contiguous segment of a file can be cleared, leaving random noise or just blank data. A missing sector typically spans 4 KB to 8 KB.
+	\item \textbf{Truncation.} The tail end of a media file can be severed, leaving only the leading portion of the file.
+\end{itemize}
+
+Bit rot and sector blanking can occur when the file is ``at rest'' on a storage medium, typically over a long period. These phenomena are due to the effects of physical wear on electronic devices over time \cite{gibson1993}. In the case of bit rot, the strength of the magnetic field representing a bit on a hard drive platter decreases over time due to interference from nearby magnetic fields and fluctuations in ambient temperature. Similarly, the electric charge representing a bit in a NAND flash storage device changes as electrons slowly drain from the microscopic components. Various forms of electromagnetic radiation and cosmic rays can also induce bit flips. Many devices have built-in error detection and correction methods to handle minor cases of bit-rot, but instances of severe degradation, including physical damage to the storage medium, cause storage devices to reject an entire sector's contents as unreadable. Fortunately, these types of at-rest corruption are relatively easy to prevent: RAID-based filesystems maintain sector-level parity that allows information to be recovered in the event of such a read failure. ZFS goes a step further and recommends proactively and periodically ``scrubbing'' the filesystem to maintain its integrity \cite{zfs-scrub}.
+
+Truncation (and also segment blanking) can occur when the file is ``in transit.'' Most file transfer mechanisms have minimal, if any, safeguards to prevent communication errors from affecting the destination file, so files are particularly vulnerable to these types of corruption. Hence, a common practice is to validate a file's checksum once the transfer is complete. Although segment blanking can result from lost packets in a network transfer, robust TCP-based mechanisms will ensure the delivery of all packets of a file transfer. Interruption is a much more common occurrence and results in truncation of the destination file. This type of corruption can happen without the user realizing it and is not limited to transit over a network. For example, when copying a large file to a removable storage device, the operating system typically copies the file into an in-memory buffer and then flushes this buffer to the storage device asynchronously. When such a storage device is safely unmounted before removal, the operating system ensures that any such cache buffers have been flushed completely. However, if the storage device is removed without being safely unmounted, any transferred files---particularly large files---may be written only partially.
+
+\section{Experimental Design}
+
+The effects of these various types of file corruption can be simulated programmatically by modifying the binary data comprising a sample video file. For this experiment, we recorded a 15-second MP4 file occupying 944 KB of space and containing a single H.264 video stream. Using a ``mangler'' utility program, we created nine copies of the original file subject to the following simulated corruptions:
+
+\begin{enumerate}
+	\item \textbf{Bit rot:} Seeking to \( N \) random byte offsets within the file and flipping a random bit (for \( N = 1, 10, 100 \)).
+	\item \textbf{Segment blanking:} Given a block size \( B \), seeking to \( N \) random block offsets \( \left\lfloor \frac{k}{B} \right\rfloor \) (for a random byte offset \( k \) within the file) and setting \( B \) bytes to all 0's (for \( N = 1, 2, 3 \)). \footnote{A special case was made for the last block in the file (i.e., setting \( \min \left( B, \text{size} - k \right) \) bytes to 0's) so that the file's size would not change as a result of this corruption.}
+	\item \textbf{Truncation:} Clipping the last \( N \) bytes from the end of the file (for \( N = 2\ \text{KB}, 200\ \text{KB}, 500\ \text{KB} \)).
+\end{enumerate}
+
+\section{Results}
+
+We found that the movie playback was surprisingly resilient to random bit-flips and segment blanking in most circumstances. Movies remained playable, but introducing more simulated corruption caused the quality of the video to degrade significantly, as demonstrated in Figure \ref{fig:bit-rot-simulation}.
+
+\begin{figure*}[ht]
+	\centering
+	\begin{subfigure}[b]{0.4\textwidth}
+		\centering
+		\includegraphics[width=\columnwidth]{images/flip0.png}
+		\caption{Original Video}
+	\end{subfigure}
+	\hspace{0.25in}
+	\begin{subfigure}[b]{0.4\textwidth}
+		\centering
+		\includegraphics[width=\columnwidth]{images/flip1.png}
+		\caption{1 bit flipped: no visible difference}
+	\end{subfigure}
+	\\
+	\begin{subfigure}[b]{0.4\textwidth}
+		\centering
+		\includegraphics[width=\columnwidth]{images/flip10.png}
+		\caption{10 bits flipped: moderate artifacts}
+	\end{subfigure}
+	\hspace{0.25in}
+	\begin{subfigure}[b]{0.4\textwidth}
+		\centering
+		\includegraphics[width=\columnwidth]{images/flip100.png}
+		\caption{100 bits flipped: severe distortion}
+	\end{subfigure}
+	\caption{Effects of simulated bit rot on video quality}
+	\label{fig:bit-rot-simulation}
+\end{figure*}
+
+In all cases, truncation resulted in an unplayable file. Upon further research and inspection, we find this arises because the \texttt{moov} box is written to the \emph{end} of the file (see Figure \ref{fig:mp4-layout}), making it especially susceptible to truncation corruption, which, as argued above, is the most likely way in which a file may become corrupted. In the truncation cases tested above, most if not all of the movie data---i.e., the \texttt{mdat} box(es)---remained intact. Hence, the focus of this research shifts to consider the following questions:
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\columnwidth]{images/mp4-layout.png}
+	\caption{Internal layout of a typical MP4 file, exhibiting the \texttt{moov} box at the end of the file.}
+	\label{fig:mp4-layout}
+\end{figure}
+
+\begin{itemize}
+	\item \textbf{Rationale:} Why is the \texttt{moov} box placed at the end of a file?
+	\item \textbf{Prevention:} Can we modify a MP4 file within the specifications to prevent truncation from clobbering the \texttt{moov} box?
+	\item \textbf{Recovery:} Can a missing \texttt{moov} box be reconstructed by looking at any surviving data contained in \texttt{mdat} boxes?
+\end{itemize}
+
+%\chapter{VERY, VERY, VERY LONG TITLE THAT FLOWS INTO A SECOND LINE FOR THE SAKE OF EXAMPLE}
+%
+%Notice that the title of this section is long - much longer than the others. When you have long section titles, this template takes care of double spacing the lines in the title. If the title is long to fit in the table of contents, the template will single space the title.
+%
+%\section{Yet Another Table}
+%
+%Another table is placed here to show the effect of having tables in multiple sections. The list of tables should still double space between table titles, while single spacing long table titles.
+%
+%%Fix table labeling.
+%\begin{table}[h!]
+%	\centering
+%	\begin{tabular}{|l|l|}
+%		\hline
+%		Dates & Attendance  \\ \hline
+%		August 8-10, 2008 & 3,523  \\ \hline
+%		August 14-16, 2009 & 4,003 \\ \hline
+%		July 9-11, 2010 & 5,049 \\ \hline
+%		August 5-7, 2011 & 6,891  \\ \hline
+%		August 10-12, 2012 & 9,464  \\ \hline
+%		August 16-18, 2013 & 11,077  \\ \hline
+%		July 18-20, 2014 & 14,686 \\ \hline
+%		July 31-August 2, 2015 & 18,411  \\ \hline
+%	\end{tabular}
+%	\caption{San Japan attendance. Data is taken from \cite{ANCONS}. I intentionally make the title of this table long so the single space effect is seen in the list of tables.}
+%\end{table}
+%
+%You may be wondering why San Japan was chosen. There are a few reasons as to why I did this:
+%
+%\begin{enumerate}
+%\item It is one of the fastest-growing anime conventions in Texas.
+%\item Filler.
+%\item I wanted a good variety of table examples.
+%\item Because conventions are cool.
+%\end{enumerate}
+%
+%The \textit{enumerate} environment was used to generated an ordered list above.
+%
+%\section{Section Test Example}
+%We insert another figure here, just for kicks.
+%
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width = 6.0in]{LowPass_Filter_Design.png}
+%	\caption{A low pass filter design.}
+%\end{figure}
+%
+%\subsection{Filler, Filler, Filler}
+%
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width=3.75in]{Workspace1.png}
+%	\caption{A typical Texmaker workspace in Windows 7. The right sidebar displays the current file's structure according to the subsections in place.}
+%\end{figure}
+%
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width=3.5in]{Rachl1.png}
+%	\caption{Some commands in R.}
+%\end{figure}
+%
+%\subsection{Subsection Test Example}
+%Test subsection for TOC display
+%
+%\subsection{Subsection Test Example 2}
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[scale=0.85]{TAM_Logo1.png}
+%	\caption{The logo of a familiar university.}
+%\end{figure}
+%
+%\begin{figure}[!h]
+%	\caption{Yet another blank float that has no purpose. This is only to test the appearance of the Lists of Figures and the List of Tables.}
+%\end{figure}
+%
+%\subsection{Section Summary}
+%
+%This holds the summary. Well, not really a summary - there was a lot of filler in this section.
+%
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[width=6.5in]{Filter1.png}
+%	\caption{A signal and the result after a basic filter. The FFT was used to create the plot on the right.}
+%\end{figure}
+%
+%\section{Section Test Example 3}
+%Test section for toc display only.
+%
+%\begin{figure}[!h]
+%	\caption{There is nothing to see here.}
+%\end{figure}
+%
+%\begin{figure}[!h]
+%	\caption{There is another float here. I wonder what could be here? Guess what? Nothing! There is no material in this float.}
+%\end{figure}
+%
+%\subsection{Subsection Test 1}
+%Test subsection for toc display only.
+%
+%\subsection{Subsection Test 2}
+%Test subsection for toc display only.

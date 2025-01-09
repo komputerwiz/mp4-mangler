@@ -1,0 +1,119 @@
+\chapter{\uppercase{Methods}}
+\label{cha:methods}
+
+A review of current literature reveals an opportunity for research to identify why MP4 videos might become unplayable. It is possible that the answer to this question may be known already by some in the industry or reside in other protected knowledge repositories. Nonetheless, we hope to provide the answer in an open academic setting and begin to explore some solutions to this problem. This chapter outlines a series of experiments to investigate what types of data corruption can render MP4 files unplayable, evaluate a method to preserve files from these types of data corruption, and determine how to recover already unplayable files.
+
+\section{Investigation}
+\label{sec:methods-investigation}
+ 
+The previous chapter highlighted several ways in which a file might become corrupted at rest or in transit. Although these are not exhaustive, they represent a significant set of common data corruption instances that a file might encounter with regular use over time. We can generalize these and similar instances of data corruption using the following data corruption model:
+\begin{enumerate}
+    \item \emph{Bit-flipping}, which accounts for minor network transcription errors or bit rot. This is assumed to occur with uniform randomness across all data contained in a file. The severity is parameterized as the number of bits \( k_B \) that are flipped from their original values.
+    \item \emph{Segment/sector blanking}, which represents data loss from dropped packets or sector read errors. For this type of corruption, we model file data as being split across an ordered sequence of contiguous segments, all of which are of size \( b \) bytes except for the last segment. Given a file of size \( n \) bytes, it is unlikely to be the case that \( b \) divides \( n \), so the last segment will be partially occupied with only \( n - b \left\lfloor \frac{n}{b} \right\rfloor \) bytes of data. Similar to bit-flipping, this type of corruption is assumed to occur with uniform randomness across all segments in a file, and the severity is parameterized by the number of segments \( k_S \) with missing data.
+    \item \emph{Truncation}, which primarily occurs from an interrupted file transfer but could also result from partial recovery due to fragmentation or file carving. The severity of this type of corruption is parameterized as the number of bytes \( k_T \) missing from the end of the file.
+\end{enumerate}
+
+We can induce the effects of this model in a controlled manner by intentionally modifying the binary data comprising sample MP4 video files. To accomplish this, we implement the model as a ``mangler'' utility program that subjects an original input MP4 file to one of the parameterized binary modifications. The following implementations and experimental conditions outline how we can determine the effects of these binary modifications on the input MP4 file's playability:
+\begin{enumerate}
+	\item \emph{Bit-flipping:} Seeking to a random byte offset within the file and flipping a random bit within that byte. This process will be repeated for \( k_B = 1, 10, 100 \) times to simulate \( k_B \) bit flips.
+    \begin{hypothesis}
+        \label{hyp:bit-flipping}
+        Bit-flipping renders MP4 files unplayable with probable (i.e., \( p > 0.5 \)) regularity.
+    \end{hypothesis}
+    \item \emph{Segment blanking:} We use a segment size of \( b = 4\ \text{KB} \), which is a typical sector size for filesystems on hard drives. For a random byte offset \( o \) within the file, seek to the starting byte offset \( \left\lfloor \frac{o}{b} \right\rfloor \) of the containing segment and set \( b \) bytes to all 0's. Let \( n \) be the file size in bytes. If the selected segment is the last in the file, only \( \min \left( b, n - o \right) \) bytes will be set to 0's so that the file's size will not change as a result of this induced corruption. This process will be repeated for \( k_S = 1, 2, 3 \) to simulate \( k_S \) segment errors.
+    \begin{hypothesis}
+        \label{hyp:blanking}
+        Segment blanking renders MP4 files unplayable with probable (i.e., \( p > 0.5 \)) regularity.
+    \end{hypothesis}
+	\item \emph{Truncation:} Clipping the end of a file by reducing the file's size by \( k_T \) bytes, where \( k_T = 2\ \text{KB}, 200\ \text{KB}, 500\ \text{KB} \).
+    \begin{hypothesis}
+        \label{hyp:truncation}
+        Truncation renders MP4 files unplayable with probable (i.e., \( p > 0.5 \)) regularity.
+    \end{hypothesis}
+\end{enumerate}
+The source code for the key components of this mangler utility is provided in Appendix \ref{cha:mangler-source-code}.
+
+For these experiments, the video file contents do not matter as much as the MP4 container structure. As documented by Xiang and others \cite{xiang2021} \cite{xiang2023} \cite{gloe2014}, video files created from the same recording device or encoder will share the same structure, but this structure will vary between different devices and encoders. This variation is expected and permitted by the MP4 specification to which all compliant devices and players adhere. The FloreView dataset \cite{baracchi2023} contains videos from a wide array of recent popular smartphone recording devices. A single playable MP4 file with H.264 video from each of four popular devices represented in this dataset, as listed in Table \ref{tab:sample-videos}, should yield an adequate dataset for experimentation. All videos have a resolution of 1920$\times$1080 pixels.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|l|l|r|r|r|r|}
+        \hline
+        Filename & Device & Size & Framerate & Bitrate\\
+        \hline\hline
+        {D14åç\_L1S1C4.mov} & Apple iPhone 13 mini & 61.6 MB & 30 fps & 17.681 Mbps \\
+        {D17\_L1S1C4.mp4} & Samsung Galaxy S21+ & 71.0 MB & 59.93 fps & 21.889 Mbps \\
+        {D34\_L1S1C4.mp4} & Google Pixel 5 & 104.9 MB & 60.07 fps & 33.035 Mbps \\
+        {D43\_L1S1C4.mp4} & OnePlus 8T & 34.0 MB & 30.15 fps & 10.463 Mbps \\
+        \hline
+    \end{tabular}
+    \caption{Selected sample videos for experimentation from FloreView dataset.}
+    \label{tab:sample-videos}
+\end{table}
+
+Each video will be subject to the set of ``mangler'' experiments above to produce a total of 36 corrupted videos: 12 per corruption method. These corrupted versions of the original video will be evaluated for playability using VLC\footnote{\url{https://www.videolan.org}} and mpv\footnote{\url{https://mpv.io}}, both of which are versatile, open-source, cross-platform media players.
+
+\section{Preservation}
+
+Based on the findings of the previous section, we plan to proceed by identifying what can be done to prevent the identified corruption method(s) from becoming a problem. Ideally, such preventative measures should operate within the MP4 specification. This could take a proactive approach, in which the modifications prevent the identified problematic method of corruption from having the same destructive effect, or it could be used to assist in recovery after the file has been found to be unplayable.
+
+To evaluate the effectiveness of any developed preservation method, we will modify the original videos from the experiments above. MP4 files that have been modified according to this preservation method will be referred to as ``preserved MP4 files.'' These files should remain playable according to the same VLC and mpv criteria.
+
+\begin{hypothesis}
+    \label{hyp:preserved-default-playable}
+    Preserved MP4 files are playable without being subject to any data corruption.
+\end{hypothesis}
+
+The preserved files will then be subject to the same induced corruption experiments above that previously rendered them unplayable and evaluated for playability. Success will be measured by whether the playability of the preserved and subsequently corrupted files improves over their original corrupted counterparts.
+
+\begin{hypothesis}
+    \label{hyp:preserved-corrupted-playable}
+    Preserved MP4 files remain playable when subject to bit rot, segment blanking, and truncation.
+\end{hypothesis}
+
+Preliminary results indicate truncation as a likely candidate for causing unplayability, which means that offset consistency (e.g., box sizes matching the actual file size and not overflowing) or the data at the end of the MP4 file is key for maintaining playability. Since the MP4 container structure is tree-based, and child order does not matter in most circumstances, relocating or somehow replicating the data at the end of the video could provide an effective means of hardening the video against truncation.
+
+\section{Recovery}
+
+Next, we turn our attention to recovering MP4 videos that have already been rendered unplayable and seek to restore them to playable status. We begin by observing that the data comprising an unplayable video file is a subset of the original (playable) file's data. Recovery, therefore, entails reconstructing some or all of the missing data, adapting the remaining valid data to account for any missing data, or a combination of both strategies. In the former case, the reconstruction could match the original data exactly or be an approximation or placeholder for the original data.
+
+MP4 files contain massive amounts of data, not all of which may be necessary for the file to be playable. The task of restoring playability should focus on only the essential pieces of data. Boxes are the basic unit of data storage in the MP4 specification. So, to determine which parts of an MP4 file are minimally necessary for playability, we develop another mangler utility to strip out specific boxes from an intact MP4 file. Subjecting an original file to successive removal of each box will produce a series of candidate videos that can be evaluated for playability using the methods above. By noting the boxes whose removal led to an unplayable file, we can enumerate the types of data that may need to be reconstructed as part of the recovery process.
+
+\begin{hypothesis}
+    \label{hyp:min-data}
+    A video is playable if and only if it contains a minimal subset of data/metadata.
+\end{hypothesis}
+
+Using this information, we inspect an unplayable MP4 file produced by the mangling process in Section \ref{sec:methods-investigation} to identify which pieces of this minimal subset are missing. The method used to restore any such missing data will depend on the nature of that data. The recovery process or processes developed here must use only contextual information already present in the corrupted file and heuristics from what is generally known. This precludes the trivial case of copying analogous data from a different file.
+
+\begin{hypothesis}
+    \label{hyp:recovery-possible}
+    Missing essential data/metadata can be recovered without reference to privileged information.
+\end{hypothesis}
+
+Modifying an unplayable MP4 file to include the reconstructed data should then return the MP4 file to playable status by the above playability criteria. Additionally, playback of the recovered MP4 file should match or at least resemble that of the original file. This requirement avoids the case where ``restoring'' a corrupted file could result in a playable MP4 devoid of any original value.
+
+\begin{hypothesis}
+    \label{hyp:recovered-playable}
+    Previously unplayable MP4 files will be playable and contain content recognizable from the original video after restoring missing essential data/metadata.
+\end{hypothesis}
+
+\section{Summary}
+
+We anticipate the root cause of unplayable videos can be reduced to at least one of the following modeled data corruption methods: bit flips, lost segments, or truncation. By inducing these errors in a controlled manner, we can identify the nature of the affected areas and their necessity for MP4 files to be playable. We will develop a method for modifying the files that maintains adherence to the MP4 specification, and we expect this modification to preserve the files' playability when re-exposed to the same corruption that previously would have rendered them unplayable. Finally, we intend to reconstruct the missing data necessary to restore an unplayable file back to playable status. Figure \ref{fig:experiment-flowchart} shows a graphical flowchart depicting all experimental procedures and findings involved in this research, and a narrative description of these procedures follows.
+
+\begin{figure}[h!]
+    \centering
+    \def\svgwidth{0.65\columnwidth}
+    \includesvg{images/flowchart.svg}
+    \caption{Overview of experimentation}
+    \label{fig:experiment-flowchart}
+\end{figure}
+
+First, we subject an input MP4 file to a battery of induced corruption methods to produce a set of corrupted MP4 files. Each corrupted file is then tested for playability: unplayable corrupted videos are saved for additional evaluation, and corrupted videos that remain playable are ignored. Each unplayable video contributes a tally towards the corruption method that was applied. This experimentation process is repeated for each additional input MP4 file, and the sum total of tallies will identify the corruption method(s) that reliably render MP4 files unplayable. 
+
+Next, we examine the set of unplayable files to determine the underlying data that is being lost and develop a method to preserve that data from the corruption methods identified in the previous phase. We apply this preservation method to the original input MP4 file to produce a new hardened input MP4 file. This file must remain playable in order for the preservation method to be a valid mitigation. The hardened MP4 file is then subjected to the same corruption method(s) that rendered the original MP4 file unplayable. If the resulting hardened corrupted file(s) remain playable, or if playability can be recovered using any post-corruption steps associated with the preservation method, then we consider the proposed preservation method effective and successful.
+
+Before approaching recovery of the unplayable corrupted files, we use the original (non-corrupted) MP4 file to determine a minimal set of data that is required for the file to be considered playable. This process only needs to happen once since all input MP4 files will share the same minimal subset of required data. Removing each successive atom/box in the MP4 data hierarchy produces a series of candidate MP4 files to test for playability: if a candidate file is unplayable, then that atom/box is marked as required. The aggregate union of all required atoms/boxes in the MP4 hierarchy thus represents a minimal set of required data.
+
+Finally, using this set of minimal data, we can inspect the unplayable corrupted MP4 files from the first phase to determine what parts of the data missing from the original file are (or were) required. Based on the nature of this data, we develop a method to reconstruct or approximate it from contextual information and intact data elsewhere in the file. Reconstructing only this minimal data eases the recovery task and improves the chances of success. Adding this reconstructed data to the unplayable MP4 file results in a candidate recovered file: if the file is playable, then we consider the proposed recovery methods effective and successful. Note that these methods are localized to the experimental data presented here and may not work to recover all unplayable MP4 videos in general. However, a comprehensive MP4 recovery tool might include them among its recovery strategies for similar cases.

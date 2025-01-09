@@ -1,0 +1,83 @@
+\chapter{Methods}
+\label{cha:methods}
+
+\section{Dataset}
+
+Despite a rigorous data format specification, the set of all valid MP4 files is infinite. Hence, examining all files exhaustively is impossible. By limiting the file size or media duration, we can reduce the space of valid MP4 files to a finite but still very large set. Even limiting the scope of study to one or a handful of recording devices still produces a set that cannot easily be searched. For example, imagine trying to enumerate all possible 10-second clips that can be recorded on a single device.
+
+We need a representative sample for experimentation, and the videos from the peer-reviewed FloreView dataset \cite{baracchi2023} satisfy this requirement. Using this dataset avoids potential bias that could result from a self-sourced dataset. It also provides an experimental standard or baseline for repeatability if anyone should choose to verify the results of this study by replicating it. FloreView provides a representative set of videos from smartphones commonly used at the time of its production, and these devices are still relevant at the time of this study.
+
+The FloreView dataset comprises videos from 46 smartphones, numbered \texttt{D01} through \texttt{D46}. These models represent 11 unique manufacturers covering a vast majority of the global smartphone market share:
+
+\begin{itemize}
+    \item \textbf{Apple:} iPad Air, iPhone SE, iPhone 8 Plus, iPhone X, iPhone 12, iPhone 13 mini
+    \item \textbf{DOOGEE:} S96 Pro
+    \item \textbf{Google:} Pixel 3a, Pixel 5
+    \item \textbf{Huawei:} Mate 10 Lite, Mate 10 Pro, Nova 5T, P8 Lite, P9 Lite, P30 Lite
+    \item \textbf{Lenovo:} Tab E7
+    \item \textbf{LG:} G4c, G7 ThinQ, V50 ThinQ
+    \item \textbf{Motorola:} Moto G, Moto G5, Moto G5S Plus, Moto G9 Plus
+    \item \textbf{OnePlus:} 6T, 8T
+    \item \textbf{Samsung:} (Galaxy) A12, A40, A52s, Note 8, S6, S10, S10+, S20+, S21+
+    \item \textbf{Sony:} Xperia M2
+    \item \textbf{Xiaomi:} Mi A2 Lite, Mi Mix 3, Redmi 5 Plus, Redmi Note 8, Redmi Note 8T, Redmi Note 9
+\end{itemize}
+
+Observe that there are only 41 unique models despite 46 devices used to construct the dataset. This is due to the repetition of the following models:
+
+\begin{itemize}
+    \item iPhone X: \texttt{D02} and \texttt{D22}
+    \item Xiaomi Redmi Note 8T: \texttt{D04} and \texttt{D10}
+    \item Motorola Moto G: \texttt{D06} and \texttt{D28}
+    \item Motorola Moto G5: \texttt{D15} and \texttt{D39}
+    \item Google Pixel 3a: \texttt{D19} and \texttt{D23}
+\end{itemize}
+
+The dataset contains 2029 video files, all of which use the MP4 container format. Apple devices use the \texttt{.mov} filename extension, the Lenovo Tab E7 (\texttt{D08}) uses \texttt{.3gp}, and the remainder all use the typical \texttt{.mp4} extension. These videos all contain the same set of subjects for each device. Most videos use only the JPEG/H.264 encoding, while some use HEIC/H.265 (often in addition to JPEG/H.264). Again, despite differences in naming and media encoding, all share the same underlying MP4 container format, which is the focus of this study.
+
+These files vary in size from 3.44 MB to 195.94 MB, with a median size of 54.91 MB. The full distribution of sizes is depicted in Figure \ref{fig:size-hist}.
+
+\begin{figure}
+    \begin{center}
+        \input{graphics/size_hist.pgf}
+    \end{center}
+    \caption{Distribution of FloreView file sizes using 200 bins}
+    \label{fig:size-hist}
+\end{figure}
+
+\section{Data Corruption Model}
+
+The previous chapter highlighted several ways in which a file might become corrupted at rest or in transit. Although these are not exhaustive, they represent a significant set of common data corruption instances that a file might encounter with regular use over time. We can generalize these and similar instances of data corruption using the following model:
+
+\begin{enumerate}
+    \item \emph{Bit-flipping}, which accounts for minor network transcription errors or bit rot. This is assumed to occur with uniform randomness across all data contained in a file. The severity is parameterized as the number of bits \( k_B \) that are flipped from their original values.
+    \item \emph{Segment/sector blanking}, which represents data loss from dropped packets or sector read errors. For this type of corruption, we model file data as being split across an ordered sequence of contiguous segments, all of which are of size \( b \) bytes except for the last segment. Given a file of size \( n \) bytes, it is unlikely to be the case that \( b \) divides \( n \), so the last segment will be partially occupied with only \( n - b \left\lfloor \frac{n}{b} \right\rfloor \) bytes of data. Similar to bit-flipping, this type of corruption is assumed to occur with uniform randomness across all segments in a file, and the severity is parameterized by the number of segments \( k_S \) with missing data.
+    \item \emph{Truncation}, which primarily occurs from an interrupted file transfer but could also result from partial recovery due to fragmentation or file carving. The severity of this type of corruption is parameterized as the number of bytes \( k_T \) missing from the end of the file.
+\end{enumerate}
+
+\section{Experimental Design}
+
+We can induce the effects of our model in a controlled manner by intentionally modifying the binary data comprising sample MP4 video files. To accomplish this, we implement the model as a ``mangler'' utility program that subjects an original input MP4 file to one of the parameterized binary modifications.
+
+Let \( D \) be a set representing preselected corruption severity levels defined later. The following implementations and experimental conditions outline how we can determine the effects of these binary modifications on the input MP4 file's playability:
+
+\begin{enumerate}
+    \item \emph{Bit-flipping:} Seeking to a random byte offset within the file and flipping a random bit within that byte. This process will be repeated for the various severity levels in \( D \).
+    \item \emph{Segment blanking:} We use a segment size of \( b = 4\ \text{KB} \), which is a typical sector size for filesystems on hard drives. For a random byte offset \( o \) within the file, seek to the starting byte offset \( \left\lfloor \frac{o}{b} \right\rfloor \) of the containing segment and set \( b \) bytes to all 0's. Let \( n \) be the file size in bytes. If the selected segment is the last in the file, only \( \min \left( b, n - o \right) \) bytes will be set to 0's so that the file's size will not change as a result of this induced corruption. This process will be repeated for the various severity levels in \( D \).
+    \item \emph{Truncation:} Clipping the end of a file by reducing the file's size by the various severity levels in \( D \).
+\end{enumerate}
+
+The ``mangler'' utility implemented for modifying (and inspecting) MP4 video files as outlined above was developed in Rust and exists as a public GitHub repository\footnote{Repository URL: \url{https://github.com/komputerwiz/mp4-mangler}. The version of the code used for this experiment was commit hash \texttt{a22e622c27e07aa282f47fe0c8a7233c4f46a95f}}
+
+The severity of corruption experienced by an MP4 file depends on the size of the file. In particular, flipping 100 bits in a 3 MB file is much more ``damaging'' than flipping 100 bits in a 200 MB file. Therefore, the severity levels in \( D \) are defined as the following geometrically distributed \emph{percentages} of the file's size from \( 0.00000001\% \) to \( 10\% \):
+
+\[ D = \left\{ 10^{-8}, 10^{-7}, \ldots, 10^0, 10^1 \right\} \times 100\% \]
+
+We run trials against all video files in the dataset grouped by the binary modification performed (bit-flipping, segment blanking, truncation) and severity level in \( D \). This will produce some proportion of unplayable files in each group. We predict this proportion will increase with higher severity according to a sigmoid regression curve representing the likelihood that a corrupted file will be unplayable. Conversely, the likelihood that a file ``survives'' data corruption decreases from near certainty at little or no corruption to impossibility as the entire file becomes corrupted. The error margins on this curve will be given by the binomial proportion confidence interval formula (Equation \ref{eqn:bpci}) with a sample size of \( n = 2029 \) and double-sided Type I error tolerance of \( \alpha = 0.05 \) (95\% CI). That is, we choose an interval such that there is only a 5\% probability that the actual proportion lies outside of the experimentally measured proportion.
+
+\begin{equation}
+    p \approx \hat{p} \pm \frac{z_\alpha}{\sqrt{n}} \sqrt{\hat{p} \left( 1 - \hat{p} \right)}
+    \label{eqn:bpci}
+\end{equation}
+
+To accelerate experimentation, trials will be executed simultaneously across multiple machines using GNU \texttt{parallel} \cite{gparallel}.

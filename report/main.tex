@@ -1,0 +1,41 @@
+\documentclass[12pt]{report}
+\usepackage{amsmath}
+\usepackage{fullpage}
+\usepackage{graphicx} % Required for inserting images
+
+% PGF plots from matplotlib
+\usepackage{tikz}
+\usepackage{tikz-cd}
+\usepackage{pgfplots}
+\def\mathdefault#1{#1}
+\everymath=\expandafter{\the\everymath\displaystyle}
+\pgfplotsset{compat=1.18}
+
+% For quick document navigation.
+\usepackage[hidelinks]{hyperref}
+
+\usepackage[style=ieee]{biblatex}
+\addbibresource{bibliography.bib}
+
+\title{Durability and Damageability of MP4 Files \\ amid Data Corruption}
+\author{Matthew Barry \\ Dr. Riccardo Bettati \\ CSCE 685}
+\date{Fall 2024}
+
+\begin{document}
+
+\maketitle
+
+\include{abstract}
+
+\tableofcontents
+\listoffigures
+
+\include{introduction}
+\include{literature-review}
+\include{methods}
+\include{results}
+\include{conclusion}
+
+\printbibliography
+
+\end{document}

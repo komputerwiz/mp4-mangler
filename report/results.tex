@@ -1,0 +1,105 @@
+\chapter{Results}
+\label{cha:results}
+
+\section{Preliminary Investigation}
+
+Before running any full-scale experimentation, we performed a small-scale exploratory experiment to investigate what happens to MP4 files when exposed to varying types of data corruption. We used the ``L1S1C4'' video from the following devices: ``D14,'' ``D17,'' ``D34,'' and ``D43.'' Rather than using a percentage of the file size, these small-scale experiments used raw counts for each severity level
+
+Table \ref{tab:corruption-playability} shows the playability results for each of the selected files. Cases that retained full playability are indicated by the term ``full,'' cases that were partially playable indicate what parts of the file were affected (i.e., ``no audio'' or ``no video''), and videos that could not be opened for playback are indicated as ``unplayable.'' These latter videos are of particular interest for this experiment.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l||c|c|c|c|}
+        \hline
+        \textbf{Induced Corruption} & \textbf{D14} & \textbf{D17} & \textbf{D34} & \textbf{D43} \\
+        \hline \hline
+        Bit-flipping ($1 \times$) & full & full & full & full \\
+        Bit-flipping ($10 \times$) & full & full & full & full \\
+        Bit-flipping ($100 \times$) & full & full & full & full \\
+        \hline
+        Blanking ($1\times 4\,\mathrm{KiB}$) & full & full & full & full \\
+        Blanking ($2\times 4\,\mathrm{KiB}$) & full & full & full & full \\
+        Blanking ($3\times 4\,\mathrm{KiB}$) & full & no video & full & full \\
+        \hline
+        Truncation (2 KB) & full & no audio & no video & full \\
+        Truncation (200 KB) & unplayable & unplayable & unplayable & full \\
+        Truncation (500 KB) & unplayable & unplayable & unplayable & full \\
+        \hline
+    \end{tabular}
+    \caption{Effects of induced data corruption methods on file playability}
+    \label{tab:corruption-playability}
+\end{table}
+
+\subsection{Bit-flipping}
+
+All videos retained full playability when subjected to modest amounts of bit-flipping. The only side effects of this induced corruption were increased artifacts and stream distortions. The severity of these distortions increased with the number of flipped bits. Bit flips are rare occurrences: 100 flipped bits in a single file are unlikely to occur spontaneously, and even if this were to happen, it would not likely go unnoticed.
+
+\subsection{Segment Blanking}
+
+All but a single video retained full playability when subjected to blanking. Removing three 4 KiB data segments rendered D17 partially unplayable: playback of the file's video stream failed. Again, sector read errors are somewhat rare, but they tend to come in ``bunches'' as hardware begins to fail or many packets are dropped.
+
+\subsection{Truncation}
+
+The results of this induced corruption are more interesting. D43 retained full playability across all tested severities. D14 remained fully playable at the lowest severity, but higher severities rendered it unplayable. D17 and D34 both retained only partial playability at the lowest severity, and higher severities rendered both videos unplayable. Interestingly, D43 was the only video to remain playable across all severities.
+
+\subsection{Summary}
+
+The results of this preliminary investigation show that MP4 files are relatively resilient against bit-flipping and segment blanking, whereas truncation seems to have the most profound impact. After deeper investigation, the reason for this becomes clear: Some MP4 files place their metadata (i.e., the \texttt{moov} box/atom) at the end of the file, where it is vulnerable to being affected by truncation. This metadata is vital for playability and comprises a very small portion of the overall file size. For the videos in the FloreView dataset, the \texttt{moov} box/atom accounts for a median of only 0.03\% of the file size. A more detailed distribution of this ratio is depicted in Figure \ref{fig:moov-hist}.
+
+\begin{figure}
+    \centering
+    \input{graphics/moov_hist.pgf}
+    \caption{Histogram of the ratio between metadata size and file size using 200 bins}
+    \label{fig:moov-hist}
+\end{figure}
+
+The positioning of this metadata, combined with its small size give us the following additional predictions of what the full-scale experimental results should yield:
+
+\begin{enumerate}
+    \item Uniform random corruption, as implemented in bit-flipping and segment blanking, is less likely to affect playability even for larger corruption levels in \( D \).
+    \item \label{itm:trunc-end} Files that place their metadata at the end of the file will be rendered unplayable even at small corruption levels in \( D \). Videos in the FloreView dataset from Apple, Samsung, and Google have this structure. One device-specific exception is the Xiaomi Redmi Note 9.
+    \item \label{itm:trunc-start} By contrast, Files with their metadata at the beginning of the file are not vulnerable to truncation and will remain playable even for high levels of corruption. Videos produced by all remaining device manufacturers, including all other Xiaomi models, have this structure.
+    \item Given \ref{itm:trunc-end} and \ref{itm:trunc-start}, we expect to see the truncation ``sigmoid'' graph to rise sharply for low corruption levels and remain steady at 0.47, which is approximately the proportion of files with their metadata at the end.
+\end{enumerate}
+
+\section{Full-Scale Experimental Results}
+
+\subsection{Bit-flipping}
+
+Figure \ref{fig:flip-results} shows how the proportion of unplayable files (interpreted as the likelihood of unplayability) started low for low corruption levels and increased with higher levels, as predicted. However, the highest level of corruption saw a significant deviation from the expected upward trend.
+
+It was later realized that the MP4 mangler would select bits randomly \emph{with replacement}. So, for these experiments, bits could be flipped and later corrected. Another possibility is that the method used to evaluate file playability could have interpreted slow response times as a positive indication that the file was playable: later trials saw a significant decrease in computer performance as filesystem I/O caching hit a memory limit.
+
+The likelihood of unplayability also trended much higher than originally anticipated: At the 1\% corruption level, over 85\% of files were rendered unplayable. This could result from box size bits being flipped: If a single box size value is affected, the offsets for all subsequent boxes are lost.
+
+\begin{figure}
+    \begin{center}
+        \input{graphics/flip-results.pgf}
+    \end{center}
+    \caption{Measured proportion of unplayable files for bit-flipping with fitted sigmoid curve}
+    \label{fig:flip-results}
+\end{figure}
+
+\subsection{Segment Blanking}
+
+Figure \ref{fig:blank-results} shows the likelihood of unplayability due to segment blanking. This graph behaved more or less exactly as predicted: the fitted sigmoid graph even lines up almost perfectly within the error bars.
+
+\begin{figure}
+    \begin{center}
+        \input{graphics/blank-results.pgf}
+    \end{center}
+    \caption{Measured proportion of unplayable files for segment blanking with fitted sigmoid curve}
+    \label{fig:blank-results}
+\end{figure}
+
+\subsection{Truncation}
+
+Figure \ref{fig:trunc-results} shows the likelihood of unplayability due to truncation. The graph leveled off just below 0.45, as was predicted, but the dip in likelihood centered around the 0.00001\% corruption level is very unexpected. One would expect that trimming more data would cause more damage rather than allow more playability. This could result from having multiple tracks within a video file: There may be a point in the metadata between tracks where truncation at that position can leave a file playable.
+
+\begin{figure}
+    \begin{center}
+        \input{graphics/trunc-results.pgf}
+    \end{center}
+    \caption{Measured proportion of unplayable files for truncation with fitted sigmoid curve}
+    \label{fig:trunc-results}
+\end{figure}

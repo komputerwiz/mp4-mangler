@@ -1,0 +1,85 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  New template code for TAMU Theses and Dissertations starting Spring 2021.
+%
+%
+%  Author: Thesis Office 
+%	 
+%  Last updated 1/13/2021
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                           APPENDIX A 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\phantomsection
+
+\chapter{\uppercase{Additional MP4 Metadata Structure}}
+\label{cha:mp4-metadata-structure}
+
+\subsection{Movie Metadata: The \texttt{moov} Box/Atom}
+
+As with the details already stated, this reference draws heavily from Apple's QTFF Specification \cite{apple2016}. Whereas the previously presented information only discussed general format structures that are practically identical between QTFF and MP4, there may be slight variations between the two formats with regard to the details presented here. Hence, this section will use Apple's ``atom'' terminology rather than the MP4 standard's ``box'' term.
+
+The \texttt{moov} atom serves as a container for other types of atoms, each of which contains additional metadata about the movie represented in a file:
+
+\begin{itemize}
+	\item Profile (\texttt{prfl}) - deprecated
+	\item Movie header (\texttt{mvhd}) - required
+	\item Clipping (\texttt{clip})
+	\item Track (\texttt{trak}) - at least one must be present
+	\item User data (\texttt{udta})
+	\item Color table (\texttt{ctab})
+	\item Compressed Movie (\texttt{cmov}) - used when the movie is stored in compressed format
+	\item Reference movie (\texttt{rmra}) - used for movies that reference data in separate files
+\end{itemize}
+
+\subsection{Tracks: The \texttt{trak} Atom}
+
+Of these possible child atom types, \texttt{trak} atoms are the most relevant since they specify the number and types of each media stream contained in the file. Each \texttt{trak} atom in turn contains the following types of child atoms:
+
+\begin{itemize}
+	\item Profile (\texttt{prfl}) - deprecated
+	\item Track header (\texttt{tkhd}) - required
+	\item Track Aperture Mode Dimensions (\texttt{tapt})
+	\item Clipping (\texttt{clip})
+	\item Track matte (\texttt{matt})
+	\item Edit (\texttt{edts})
+	\item Track reference (\texttt{tref})
+	\item Track exclude from autoselection (\texttt{txas})
+	\item Track loading settings (\texttt{load})
+	\item Track input map (\texttt{imap})
+	\item Media (\texttt{mdia}) - required
+	\item User data (\texttt{udta})
+\end{itemize}
+
+\subsection{Streams: The \texttt{mdia} Atom}
+
+The \texttt{mdia} atom brings us closer to understanding the actual stream referenced by the track. This type of atom contains the following additional types of atoms:
+
+\begin{itemize}
+	\item Media header (\texttt{mdhd}) - required
+	\item Extended language tag (\texttt{elng})
+	\item Handler reference (\texttt{hdlr}) - determines the kind and how media data is to be interpreted
+	\item Media information (\texttt{minf}) - handler-specific information
+	\item User data (\texttt{udta})
+\end{itemize}
+
+\subsection{Raw Codec Metadata: The \texttt{minf} Atom}
+
+For the purposes of this research, we focus only on video \texttt{minf} atoms:
+
+\begin{itemize}
+	\item Video media information (\texttt{vmhd}) - required
+	\item Handler reference (\texttt{hdlr}) - required
+	\item Data information (\texttt{dinf}) - used for data reference
+	\item Sample table (\texttt{stbl})
+\end{itemize}
+%
+%\begin{figure}[h]
+%\centering
+%\includegraphics[scale=.50]{figures/Penguins.jpg}
+%\caption{TAMU figure}
+%\label{fig:tamu-fig5}
+%\end{figure}

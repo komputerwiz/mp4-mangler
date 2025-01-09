@@ -1,0 +1,710 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  New template code for TAMU Theses and Dissertations starting Spring 2021.
+%
+%
+%  Author: Thesis Office
+%
+%  Last updated 1/13/2021
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                           APPENDIX B
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{\uppercase{Selected Source Code for Mangler Utility}}
+\label{cha:mangler-source-code}
+
+The ``mangler'' utility for modifying and inspecting MP4 video files was developed in Rust and exists as a public GitHub repository at \url{https://github.com/komputerwiz/mp4-mangler}.
+
+The source code is too long to include in its entirety, so the relevant parts pertaining to the binary file modification are included here. The code listings in this chapter use the 2021 edition of the Rust programming language, compile on version 1.80.1 of the \texttt{rustc} compiler, and depend on the following crates and corresponding versions:
+\begin{itemize}
+    \item \texttt{log 0.4.20}
+    \item \texttt{mp4 0.14.0}
+    \item \texttt{rand 0.8.5}
+\end{itemize}
+All other imports are from the Rust standard library.
+
+\newpage
+
+\section{Data Corruption Methods}
+
+\subsection{Bit-Flipping}
+
+\begin{lstlisting}[language=Rust]
+use std::fs::OpenOptions;
+use std::io;
+use std::os::unix::prelude::FileExt;
+use std::path::Path;
+
+use rand::{self, distributions::Uniform, prelude::Distribution};
+
+/// flips random bits in the given file
+pub fn flip_bits(file: &Path, num_bits: usize) -> io::Result<()> {
+  log::info!("opening file {}", file.to_str().unwrap_or("???"));
+  let f = OpenOptions::new().read(true).write(true).open(file)?;
+  let size = f.metadata()?.len();
+
+  let mut rng = rand::thread_rng();
+  let size_dist = Uniform::new(0, size);
+  let bit_dist = Uniform::new(0, 8);
+
+  for _ in 0..num_bits {
+    // read byte at random byte offset
+    let byte_offset = size_dist.sample(&mut rng);
+    let mut buf: [u8; 1] = Default::default();
+    f.read_exact_at(&mut buf, byte_offset)?;
+
+    let orig = buf[0];
+
+    // flip bit at random bit offset
+    let bit_offset = bit_dist.sample(&mut rng);
+    buf[0] ^= 1 << bit_offset;
+    println!("Flipped bit {} at offset 0x{:x}: 0x{:02x} => 0x{:02x}",
+      8 - bit_offset,
+      byte_offset,
+      orig,
+      buf[0]);
+
+    // write byte back to file
+    f.write_at(&buf, byte_offset)?;
+  }
+
+  Ok(())
+}
+\end{lstlisting}
+
+\newpage
+
+\subsection{Segment Blanking}
+
+\begin{lstlisting}[language=Rust]
+use std::fs::OpenOptions;
+use std::io;
+use std::os::unix::prelude::FileExt;
+use std::path::Path;
+
+use rand::{self, distributions::Uniform, prelude::Distribution};
+
+/// zeroes random contiguous blocks of data
+pub fn blank_blocks(
+  file: &Path,
+  num_blocks: usize,
+  block_size_bytes: u64
+) -> io::Result<()> {
+  log::info!("opening file {}", file.to_str().unwrap_or("???"));
+  let f = OpenOptions::new().read(true).write(true).open(file)?;
+  let size = f.metadata()?.len();
+
+  let bad_block = vec![0; block_size_bytes as usize];
+  let size_in_blocks = size / block_size_bytes;
+
+  let mut rng = rand::thread_rng();
+  let block_dist = Uniform::new(0, size_in_blocks);
+
+  for _ in 0..num_blocks {
+    let block_offset = block_dist.sample(&mut rng);
+
+    let end = if block_offset == size_in_blocks - 1 {
+      // don't go beyond end of last block
+      size % block_size_bytes
+    } else {
+      block_size_bytes
+    } as usize;
+
+    println!("Blanked block {} ({} bytes starting at offset 0x{:x})",
+      block_offset,
+      block_size_bytes,
+      block_offset * block_size_bytes);
+
+    f.write_at(&bad_block[0..end], block_offset * block_size_bytes)?;
+  }
+
+  Ok(())
+}
+\end{lstlisting}
+
+\newpage
+
+\subsection{Truncation}
+
+\begin{lstlisting}[language=Rust]
+/// truncates the given number of bytes from the end of the file.
+pub fn truncate(file: &Path, num_bytes: u64) -> io::Result<()> {
+  log::info!("opening file {}", file.to_str().unwrap_or("???"));
+  let f = OpenOptions::new().read(true).write(true).open(file)?;
+  let size = f.metadata()?.len();
+
+  f.set_len(size - num_bytes)?;
+
+  println!("Truncated {} bytes from end of file.", num_bytes);
+
+  Ok(())
+}
+\end{lstlisting}
+
+\newpage
+
+\section{Box/Atom Stripping}
+
+The following code depends on the parsing framework in Section \ref{sec:mp4-sax} and is used for finding the minimum required data for playability.
+
+\begin{lstlisting}[language=Rust]
+use std::fs::File;
+use std::io::{self, Write};
+use std::path::Path;
+
+use mp4::{BoxHeader, BoxType};
+
+/// strips the given box type(s) from the given input file
+/// and writes the resulting MP4 to the given output file
+pub fn strip(
+  input: &Path,
+  output: &Path,
+  ignore: Vec<BoxType>
+) -> io::Result<()> {
+  let in_file = File::open(input)?;
+  let in_file_size = in_file.metadata()?.len();
+  let reader = io::BufReader::new(in_file);
+
+  let out_file = File::create(output)?;
+  let mut writer = io::BufWriter::new(out_file);
+
+  let mut visitor = StripVisitor::new(&mut writer, ignore);
+  read_box(reader, in_file_size, &mut visitor)?;
+
+  Ok(())
+}
+
+struct Mp4Box {
+  name: BoxType,
+  data: BoxData,
+}
+
+impl Mp4Box {
+  pub fn new(name: BoxType) -> Self {
+    Self {
+      name,
+      data: BoxData::Empty,
+    }
+  }
+
+  pub fn write_to(
+    &self,
+    writer: &mut impl io::Write
+  ) -> io::Result<u64> {
+    let mut data_buf = Vec::new();
+    self.data.write_to(&mut data_buf)?;
+
+    let mut size = 8 + data_buf.len() as u64;
+    if size > u32::MAX as u64 {
+      size += 8;
+    }
+
+    let name_id: u32 = self.name.into();
+
+    if size > u32::MAX as u64 {
+      writer.write_all(&1u32.to_be_bytes())?;
+      writer.write_all(&name_id.to_be_bytes())?;
+      writer.write_all(&size.to_be_bytes())?;
+    } else {
+      writer.write_all(&(size as u32).to_be_bytes())?;
+      writer.write_all(&name_id.to_be_bytes())?;
+    }
+
+    writer.write_all(&data_buf)?;
+
+    Ok(size)
+  }
+}
+
+enum BoxData {
+  Empty,
+  Raw(Vec<u8>),
+  Children(Vec<Mp4Box>),
+}
+
+impl BoxData {
+  pub fn write_to(
+    &self,
+    writer: &mut impl io::Write
+  ) -> io::Result<u64> {
+    match self {
+      Self::Empty => Ok(0),
+      Self::Raw(bytes) => {
+        writer.write_all(&bytes)?;
+        Ok(bytes.len() as u64)
+      },
+      Self::Children(children) => {
+        let mut sum = 0;
+        for child in children {
+          sum += child.write_to(writer)?;
+        }
+        Ok(sum)
+      }
+    }
+  }
+}
+
+struct StripVisitor<'a> {
+  writer: &'a mut dyn io::Write,
+  ignore: Vec<BoxType>,
+  stack: Vec<Mp4Box>,
+}
+
+impl<'a> StripVisitor<'a> {
+  fn new(
+    writer: &'a mut impl io::Write,
+    ignore: Vec<BoxType>
+  ) -> Self {
+    Self {
+      writer,
+      ignore,
+      stack: Vec::new(),
+    }
+  }
+
+}
+
+impl<'a> Mp4Visitor for StripVisitor<'a> {
+  fn start_box(
+    &mut self,
+    header: &BoxHeader,
+    corrected_size: Option<u64>
+  ) -> io::Result<()> {
+    if let Some(size) = corrected_size {
+      log::warn!("Correcting size mismatch in {} box: header says {} B, but should actually be {} B", header.name, header.size, size);
+    }
+
+    // maintain context for all box types
+    // the "ignore" step will happen later
+    self.stack.push(Mp4Box::new(header.name));
+
+    Ok(())
+  }
+
+  fn data(&mut self, reader: &mut impl io::Read) -> io::Result<()> {
+    let current_box = self.stack.last_mut().unwrap();
+
+    if self.ignore.contains(&current_box.name) {
+      log::info!("skipping data for ignored box type {}", current_box.name);
+      return Ok(());
+    }
+
+    // Attempt to do some recovery in the form of
+    // box offset/size consistency adjustments
+    let mut data: Vec<u8> = Vec::new();
+    match current_box.name {
+      BoxType::CttsBox => {
+        let mut version_flags = [0u8; 4];
+        // version (1 B) and flags (3 B)
+        reader.read_exact(&mut version_flags)?;
+
+        // entry count (u32)
+        let mut entry_count_bytes = [0u8; 4];
+        reader.read_exact(&mut entry_count_bytes)?;
+        let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+        // read entries ({sample_count: u32, composition_offset: u32})
+        let mut entries = Vec::new();
+        let mut entry_bytes = [0u8; 8];
+        while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+          entries.push(entry_bytes);
+        }
+
+        if entry_count as usize != entries.len() {
+          log::warn!("correcting ctts table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+        }
+
+        data.write(&version_flags)?;
+        data.write(&(entries.len() as u32).to_be_bytes())?;
+        for entry in entries {
+          data.write(&entry)?;
+        }
+      },
+
+      BoxType::StszBox => {
+        let mut version_flags = [0u8; 4];
+        // version (1 B) and flags (3 B)
+        reader.read_exact(&mut version_flags)?;
+
+        // sample size (u32)
+        let mut sample_size_bytes = [0u8; 4];
+        reader.read_exact(&mut sample_size_bytes)?;
+        let sample_size = u32::from_be_bytes(sample_size_bytes);
+
+        // entry count (u32)
+        let mut entry_count_bytes = [0u8; 4];
+        reader.read_exact(&mut entry_count_bytes)?;
+        let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+        let mut entries = Vec::new();
+        if sample_size == 0 {
+          // samples have variable sizes that are stored in the table
+          // read entries ({sample_size: u32})
+          let mut entry_bytes = [0u8; 4];
+          while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+            entries.push(entry_bytes);
+          }
+        }
+
+        if entry_count as usize != entries.len() {
+          log::warn!("correcting stsz table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+        }
+
+        data.write(&version_flags)?;
+        data.write(&sample_size_bytes)?;
+        data.write(&(entries.len() as u32).to_be_bytes())?;
+        for entry in entries {
+          data.write(&entry)?;
+        }
+      },
+
+      BoxType::StcoBox => {
+        let mut version_flags = [0u8; 4];
+        // version (1 B) and flags (3 B)
+        reader.read_exact(&mut version_flags)?;
+
+        // entry count (u32)
+        let mut entry_count_bytes = [0u8; 4];
+        reader.read_exact(&mut entry_count_bytes)?;
+        let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+        // read entries ({chunk_offset: u32})
+        let mut entries = Vec::new();
+        let mut entry_bytes = [0u8; 4];
+        while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+          entries.push(entry_bytes);
+        }
+
+        if entry_count as usize != entries.len() {
+          log::warn!("correcting stco table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+        }
+
+        data.write(&version_flags)?;
+        data.write(&(entries.len() as u32).to_be_bytes())?;
+        for entry in entries {
+          data.write(&entry)?;
+        }
+      },
+
+      BoxType::StscBox => {
+        let mut version_flags = [0u8; 4];
+        // version (1 B) and flags (3 B)
+        reader.read_exact(&mut version_flags)?;
+
+        // entry count (u32)
+        let mut entry_count_bytes = [0u8; 4];
+        reader.read_exact(&mut entry_count_bytes)?;
+        let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+        // read entries ({first_chunk: u32, samples_per_chunk: u32, sample_description_id: u32})
+        let mut entries = Vec::new();
+        let mut entry_bytes = [0u8; 12];
+        while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+          entries.push(entry_bytes);
+        }
+
+        if entry_count as usize != entries.len() {
+          log::warn!("correcting stsc table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+        }
+
+        data.write(&version_flags)?;
+        data.write(&(entries.len() as u32).to_be_bytes())?;
+        for entry in entries {
+          data.write(&entry)?;
+        }
+      },
+
+      BoxType::SttsBox => {
+        let mut version_flags = [0u8; 4];
+        // version (1 B) and flags (3 B)
+        reader.read_exact(&mut version_flags)?;
+
+        // entry count (u32)
+        let mut entry_count_bytes = [0u8; 4];
+        reader.read_exact(&mut entry_count_bytes)?;
+        let entry_count = u32::from_be_bytes(entry_count_bytes);
+
+        // read entries ({sample_count: u32, sample_duration: u32})
+        let mut entries = Vec::new();
+        let mut entry_bytes = [0u8; 8];
+        while let Ok(_) = reader.read_exact(&mut entry_bytes) {
+          entries.push(entry_bytes);
+        }
+
+        if entry_count as usize != entries.len() {
+          log::warn!("correcting stts table length: metadata says {} entries, but should actually be {} entries", entry_count, entries.len());
+        }
+
+        data.write(&version_flags)?;
+        data.write(&(entries.len() as u32).to_be_bytes())?;
+        for entry in entries {
+          data.write(&entry)?;
+        }
+      },
+
+      // copy all other box types verbatim
+      _ => {
+        io::copy(reader, &mut data)?;
+      },
+    }
+
+    current_box.data = BoxData::Raw(data);
+
+    Ok(())
+  }
+
+  fn end_box(&mut self, _typ: &mp4::BoxType) -> io::Result<()> {
+    if let Some(exit_box) = self.stack.pop() {
+      if self.ignore.contains(&exit_box.name) {
+        log::info!("skipping ignored box type {}", exit_box.name);
+        return Ok(())
+      }
+
+      if let Some(parent_box) = self.stack.last_mut() {
+        // "write" data to parent box
+        match &mut parent_box.data {
+          BoxData::Empty => {
+            parent_box.data = BoxData::Children(vec![exit_box]);
+          },
+          BoxData::Raw(_) => {
+            log::warn!("overriding raw data in parent with child node");
+            parent_box.data = BoxData::Children(vec![exit_box]);
+          },
+          BoxData::Children(children) => {
+            children.push(exit_box)
+          }
+        }
+      } else {
+        // exiting root; write data to file
+        exit_box.write_to(&mut self.writer)?;
+      }
+    }
+
+    Ok(())
+  }
+}
+\end{lstlisting}
+
+\newpage
+
+\subsection{MP4 Parsing Framework}
+\label{sec:mp4-sax}
+
+The following code takes inspiration from the method proposed by Zhao and Guan \cite{zhao2010} and by the event-based SAX XML parser for Java \cite{fegaras2004}.
+
+\begin{lstlisting}[language=Rust]
+use std::io::{self, Read, Seek, ErrorKind, SeekFrom};
+use mp4::{BoxHeader, BoxType};
+
+/// A SAX-style visitor/parser for reading MP4 boxes
+pub trait Mp4Visitor {
+  fn start_box(
+    &mut self,
+    _header: &BoxHeader,
+    _corrected_size: Option<u64>
+  ) -> io::Result<()> {
+    Ok(())
+  }
+
+  fn data(
+    &mut self,
+    _reader: &mut impl Read
+  ) -> io::Result<()> {
+    Ok(())
+  }
+
+  fn end_box(
+    &mut self,
+    _typ: &BoxType
+  ) -> io::Result<()> {
+    Ok(())
+  }
+}
+
+pub fn read_box<R: Read + Seek>(
+  mut reader: R,
+  end: u64,
+  visitor: &mut impl Mp4Visitor
+) -> io::Result<R> {
+  // A box is simply a header followed by content.
+  // The header includes the size (in bytes) and type of the box, and
+  // has 2 different forms depending on the size:
+  //
+  // if size <= u32::MAX  (8-byte header),
+  //
+  //   box {
+  //     header {
+  //       size: u32,      // big endian
+  //       type: [u8; 4],  // four ASCII chars
+  //     },
+  //     content: [u8; header.size],
+  //   }
+  //
+  // if size > u32::MAX  (16-byte header),
+  //
+  //   header {
+  //     size: u32,       // big endian, set to 1
+  //     type: [u8; 4],   // four ASCII chars
+  //     largesize: u64,  // big endian
+  //   },
+  //   content: [u8; header.largesize]
+  //
+  // The box size declared in the header includes the size of the
+  // header itself, so the header of an empty box (i.e., with no
+  // content) will have a declared size of 8 bytes
+
+  // The stream is currently positioned at the start of the header,
+  // and `current` captures this position.
+  //
+  // `end` captures the end of the current context, which could be the
+  // file itself or the parent box.
+  //
+  //   .- current                     end -.
+  //   |                                   |
+  //   | header | content | other stuff... |
+  //   ^
+  let mut current = reader.stream_position()?;
+
+  // Boxes are composite, meaning the contents of a box can be
+  // additional (sub-)boxes. Hence, read them iteratively and
+  // recursively to catch all of them.
+  while current < end {
+    log::debug!("reading box header");
+    let header = read_header(&mut reader)?;
+
+    // The stream is now positioned at the start of the content.
+    // In a corrupted file, the size declared in the header could
+    // potentially overflow the end.
+    // The following situation is expected and desirable...
+    //
+    //   .- current         .- box_end   end -.
+    //   |                  |                 |
+    //   | header | content | other stuff...  |
+    //            ^
+    // But we want to catch the following case to correct for it:
+    //
+    //   .- current   end? -.  box_end? -.
+    //   |                  |            |
+    //   | header | content |      oops! |
+    //            ^
+    let mut box_end = current + header.size;
+    let corrected_size = if box_end > end {
+      log::error!("declared box size overflows container by {} B", box_end - end);
+      box_end = end;
+      Some(box_end - current)
+    } else {
+      None
+    };
+
+    visitor.start_box(&header, corrected_size)?;
+
+    match header.name {
+      BoxType::FreeBox
+        | BoxType::ElstBox
+        | BoxType::FtypBox
+        | BoxType::HdlrBox
+        | BoxType::MdatBox
+        | BoxType::MdhdBox
+        | BoxType::MvhdBox
+        | BoxType::TkhdBox
+        | BoxType::VmhdBox
+        | BoxType::DrefBox
+        | BoxType::StsdBox
+        // ...
+        => {
+          // limit visitor's reader to just the contents of this box
+          let content_start = reader.stream_position()?;
+          let mut sub_reader = reader.take(box_end - content_start);
+          visitor.data(&mut sub_reader)?;
+          reader = sub_reader.into_inner();
+
+          // skip to the end of this box
+          log::trace!("not recursing into 'data-only' box");
+          reader.seek(SeekFrom::Start(box_end))?;
+        },
+      _ => {
+        // traverse all other boxes recursively
+        reader = read_box(reader, box_end, visitor)?;
+      }
+    }
+
+    visitor.end_box(&header.name)?;
+
+    current = reader.stream_position()?;
+  }
+
+  Ok(reader)
+}
+
+fn read_header<R: Read>(reader: &mut R) -> io::Result<BoxHeader> {
+  let mut buf = [0u8; 8];
+  match reader.read(&mut buf) {
+    Ok(sz) => {
+      log::trace!("read {} bytes for header: {:0x?}", sz, buf);
+      if sz == 0 {
+        log::error!("reached EOF");
+        return Err(std::io::Error::new(ErrorKind::UnexpectedEof, "reached EOF"));
+      }
+    },
+    Err(e) => {
+      log::error!("unable to read header: {}", e);
+      Err(e)?;
+    },
+  };
+
+  // Get size.
+  let s = buf[0..4].try_into().unwrap();
+  let size = u32::from_be_bytes(s);
+
+  // Get box type string.
+  let t = buf[4..8].try_into().unwrap();
+  let typ = u32::from_be_bytes(t);
+
+  // Get largesize if size is 1
+  if size == 1 {
+    reader.read_exact(&mut buf)?;
+    let largesize = u64::from_be_bytes(buf);
+
+    Ok(BoxHeader {
+      name: BoxType::from(typ),
+
+      // Subtract the length of the serialized largesize,
+      // as callers assume `size - HEADER_SIZE` is the length of the
+      // box data. Disallow `largesize < 16`, or else a largesize
+      // of 8 will result in a BoxHeader::size
+      // of 0, incorrectly indicating that the box data extends to the
+      // end of the stream.
+      size: match largesize {
+        0 => 0,
+        1..=15 => return Err(std::io::Error::new(ErrorKind::InvalidData, "64-bit box size too small")),
+        16..=u64::MAX => largesize - 8,
+      },
+    })
+  } else {
+    Ok(BoxHeader {
+      name: BoxType::from(typ),
+      size: size as u64,
+    })
+  }
+}
+
+pub trait BoxHeaderExt {
+  fn set_size(&mut self, content_size: u64);
+}
+
+impl BoxHeaderExt for BoxHeader {
+  fn set_size(&mut self, content_size: u64) {
+    self.size = content_size + 8;
+
+    if self.size > u32::MAX as u64 {
+      // writing will need to use longsize variant
+      self.size += 8;
+    }
+  }
+}
+\end{lstlisting}
+
+\pagebreak{}

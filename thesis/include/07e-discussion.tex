@@ -1,0 +1,35 @@
+\chapter{\uppercase{Discussion}}
+
+\section{Truncation: The Likely Cause of Unplayable MP4 Files}
+
+Of all the methods tested under the corruption model, only truncation satisfied the requirements of rendering MP4 files unplayable with probable regularity. Further investigation revealed the underlying reason \emph{why} the files become unplayable and established minimum criteria for playability: namely, the presence of a \texttt{moov} box with at least one required \texttt{trak} box containing \texttt{stsd}, \texttt{stts}, \texttt{stsz}, and \texttt{stsc} boxes. Truncation becomes problematic for files whose metadata is appended at the end of the file, and this structure appears to be common for many different recording devices.
+
+The relative size of MP4 metadata is very small compared to the referenced media data contained in the \texttt{mdat} box. For example, the D17 file occupies roughly 71 MB of space, but its metadata constitutes only 21 KB of that space. Therefore, the induced corruption methods that involve randomization are vastly more likely to affect media data than metadata. As demonstrated by the results of our experiments, the media data is quite robust against corruption. The files remained playable in these cases, but the audio and video playback would become progressively more distorted when subjected to higher levels of corruption.
+
+Note that it is conceivable, albeit unlikely, that the other corruption methods may render a file unplayable if this critical data is affected. We were fortunate to capture such a case in the 3 \( \times \) 4 KiB blanking results for D17. This file occupies over 17,000 blocks, only six of which are metadata (potentially fewer contain any critical required data).
+
+\section{Effective Preservation Methods}
+
+As stated above, truncation has a devastating effect on files with metadata located at the end of the file. Relocating this metadata to the beginning of the file successfully preserves a file's playability even when subjected to significant amounts of truncation. This preservation method also happens to solve another known problem when playing MP4 files that are stored on remote systems. Loading the metadata ahead of the media data allows media players to begin playback immediately while the file transfer continues; hence the term ``faststart.''
+
+Another preservation technique could be to create ``sidecar'' files to replicate the metadata in the original file. These files would be valid MP4 files since the specification permits referencing media data stored in a separate file. However, these files could confuse users who are unaware of their dependent structure or intended purpose.
+
+\section{Metadata Reconstruction Challenges}
+
+After determining what metadata needed to be reconstructed to restore playability, we came to the disappointing realization that doing so requires much more effort to determine whether it is possible and, if so, how. The first challenge arises from the nature of the ``sample table'' boxes:
+
+\begin{itemize}
+    \item \texttt{stsd} --- \emph{Sample Description Table}. Each entry contains metadata about ``samples,'' which are the smallest unit of stream data. The format of each sample depends on the stream type, and descriptor info must be looked up in the \texttt{stsc} table first.
+    \item \texttt{stts} --- \emph{Time-to-Sample Table}. Each entry provides a mapping from a time index to a sample number.
+    \item \texttt{stsz} --- \emph{Sample Size Table}. Each entry describes the size of each sample.
+    \item \texttt{stsc} --- \emph{Sample-to-Chunk Table}. Samples are grouped into ``chunks,'' and this table contains the metadata for looking up descriptor info in the \texttt{stsd} table.
+\end{itemize}
+
+Unfortunately, none of this information is readily discernable from the contents of the \texttt{mdat} box. Moreover, the stream data typically consists of variable-sized packets representing samples and chunks described above. Each packet belongs to a different stream and is almost always interleaved with packets from other streams. The contents of these packets are indistinguishable from random noise due to their encoding, which almost always involves compression, so their boundaries are extremely difficult, if not impossible, to detect. Recovering metadata in these circumstances would be akin to uncompressing multiple compressed files with their contents intertwined and without a decompression index.
+
+This brings up a second challenge, which is determining how many tracks are represented in the media data. An MP4 file can contain multiple streams, and the data for each stream is represented in the \texttt{mdat} atom. Even if the packet boundaries were known, we would have to ``defragment'' the stream data into the correct number and type of \texttt{trak} atoms.
+
+\section{A Hopeful Case for Recovery}
+
+Fortunately, if future research uncovers a way to reconstruct this vital metadata from partially intact media stream data, we have demonstrated that adding this reconstructed metadata to the corrupted files will fully restore the playability of the original contents. In addition, recovery of this data may be possible under ideal controlled circumstances: for example, an MP4 file with a single stream using a known codec and known stream parameters (e.g., bitrate and resolution), but even this requires more in-depth research and advanced techniques that are beyond the scope of this study.
+

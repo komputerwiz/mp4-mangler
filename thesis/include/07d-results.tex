@@ -1,0 +1,207 @@
+\chapter{\uppercase{Results}}
+
+\section{Investigation: Effects of Corruption on File Playability}
+
+The videos selected from the FloreView dataset share the same ``L1S1C4'' suffix and will be referenced by their prefix for brevity: ``D14,'' ``D17,'' ``D34,'' and ``D43.'' Prefixes in this dataset correspond with the model of the recording device used to create them, whereas the suffix indicates the subject of the videos. The contents of these videos do not matter as much as the structure, which varies by device and manufacturer: a corruption method that breaks playability for a particular video is likely to affect different videos from the same device and potentially videos from devices by the same manufacturer. Hence, the selected videos capture the same subject across different devices: an Apple iPhone 13 mini, a Samsung Galaxy S21+, a Google Pixel 5, and a OnePlus 8T. These devices represent a diverse sampling of modern recording devices.
+
+Table \ref{tab:corruption-playability} shows the playability results for each of the files from the FloreView dataset that subjected to induced data corruption. Cases that retained full playability are indicated by the term ``full,'' cases that were partially playable indicate what parts of the file were affected (i.e., ``no audio'' or ``no video''), and videos that could not be opened for playback are indicated as ``unplayable.'' These latter videos are of particular interest for this experiment.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l||c|c|c|c|}
+        \hline
+        \textbf{Induced Corruption} & \textbf{D14} & \textbf{D17} & \textbf{D34} & \textbf{D43} \\
+        \hline \hline
+        Bit-flipping ($1 \times$) & full & full & full & full \\
+        Bit-flipping ($10 \times$) & full & full & full & full \\
+        Bit-flipping ($100 \times$) & full & full & full & full \\
+        \hline
+        Blanking ($1\times 4\,\mathrm{KiB}$) & full & full & full & full \\
+        Blanking ($2\times 4\,\mathrm{KiB}$) & full & full & full & full \\
+        Blanking ($3\times 4\,\mathrm{KiB}$) & full & no video & full & full \\
+        \hline
+        Truncation (2 KB) & full & no audio & no video & full \\
+        Truncation (200 KB) & unplayable & unplayable & unplayable & full \\
+        Truncation (500 KB) & unplayable & unplayable & unplayable & full \\
+        \hline
+    \end{tabular}
+    \caption{Effects of induced data corruption methods on FloreView file playability}
+    \label{tab:corruption-playability}
+\end{table}
+
+\subsection{Bit-flipping}
+
+All videos retained full playability when subjected to bit-flipping, regardless of the severity. The only side effects of this induced corruption were increased artifacts and stream distortions. The severity of these distortions increased with the number of flipped bits.
+
+Failure to produce a single unplayable video means that we reject Hypothesis \ref{hyp:bit-flipping} that bit-flipping renders videos unplayable with probable regularity: \( p = 0 \).
+
+\subsection{Segment Blanking}
+
+All but a single video retained full playability when subjected to blanking. Removing three 4 KiB data segments rendered D17 partially unplayable: playback of the file's video stream failed in both mpv and VLC.
+
+In scoring probable regularity of segment blanking, the partially playable file contributes only a ``half-point.'' So, out of 12 trials, 0.5 resulted in an unplayable outcome, yielding \( p = \frac{0.5}{12} = 0.0417 \). Thus, we reject Hypothesis \ref{hyp:blanking} that segment blanking renders videos unplayable with probable regularity.
+
+\subsection{Truncation}
+
+The results of this induced corruption are more interesting. D43 retained full playability across all tested severities. D14 remained fully playable at the lowest severity, but higher severities rendered it unplayable. D17 and D34 both retained only partial playability at the lowest severity, and higher severities rendered both videos unplayable. Interestingly, D43 was the only video to remain playable across all severities.
+
+In summary, out of 12 trials, 6 were unplayable, and 2 were only partially playable. The presence of a single unplayable video would demonstrate the possibility that truncation could result in an unplayable file. However, in this case, we find ample support for Hypothesis \ref{hyp:truncation} that truncation renders MP4 files unplayable with probable regularity: \( p = \frac{7}{12} = 0.583 \). Given this result, our next step is to determine the underlying reason why truncation is so destructive and perhaps why some files like D43 seem resilient to it.
+
+\section{Preservation}
+
+\subsection{Metadata Location}
+
+A closer inspection reveals similarities in the MP4 structure of D14, D17, and D34: the media stream data (i.e., the \texttt{mdat} box) precedes the metadata (i.e., the \texttt{moov} box) in all of these files. Placing the metadata at the end of the MP4 file leaves it vulnerable to truncation, and since the stream data cannot be decoded without the metadata, truncating these files renders them unplayable.
+
+D43 differs in that its metadata is placed early in the file, leaving the stream data at the end: truncation affects only the trailing end of the stream data, leaving the metadata untouched. Stream data is written roughly chronologically, with data at earlier positions in the file corresponding to earlier time indices. In this case, the metadata provides the necessary information to decode the intact media data from the start. Playback simply ends where the stream data has been truncated.
+
+\subsection{Rationale}
+
+Appending the metadata at the end of the file appears to be a common practice, and this is likely because doing so makes the recording process more efficient. Encoded stream data can be written directly to the file as it becomes available, allowing the file to grow without adjustment, limitations, or knowing the total amount of data. Upon completion, the metadata that the encoder has generated during the recording process can be appended to the file without adjusting or recomputing any part of the file.
+
+The contents of the \texttt{moov} atom are not known until after the recording has stopped, so how could a device produce a recording with the metadata at the beginning of the file? A closer inspection of the D43 file reveals how the OnePlus 8T likely accomplishes this: there is a \texttt{free} box between the \texttt{moov} box and the \texttt{mdat} box, which could be the result of ``pre-allocating'' a reserved space at the beginning for the \texttt{moov} atom. The \texttt{mdat} data is written to the file starting at a later offset in the file, and the \texttt{moov} atom is written to the pre-allocated space later. This places an upper bound on the amount of metadata, which translates to an upper bound on the duration of the video that can be recorded using this method. A larger metadata pre-allocation allows for a longer video but also results in more wasted padding space on shorter videos.
+
+\subsection{Preservation Methodology}
+
+As the D43 file demonstrates, placing the metadata at the beginning of the file is an effective means of preserving MP4 files in the face of truncation. This can be accomplished by pre-allocating space, as discussed above, or by relocating the \texttt{moov} atom in a later post-processing or archival phase. Relocation means recomputing offsets and shifting a significant portion of the file. Such operations may not be feasible on a recording device with limited I/O throughput, computational power, or energy resources. Performing these operations on a desktop machine or a cloud server seems more appropriate, but the files in their ``as-recorded'' state would be vulnerable until this conversion takes place.
+
+Relocating metadata to the beginning of a file is actually a solution to a well-known problem in the field of media streaming. Suppose a user wishes to play a video stored as an MP4 file on a remote server. To do so, the MP4 file must be transmitted to the user's local machine, even if only temporarily. Moreover, suppose that the metadata of this MP4 file is placed at the end and that transmission of this file occurs sequentially from the start. Since the metadata is required to begin playback, the user must wait for the entire MP4 file to be transmitted before it can be played. File servers and HTTP(S) servers fall into this category, but a well-designed media streaming server could seek to the metadata, send it first, and subsequently start transmitting that so playback can begin immediately as the stream data continues in the background. This is known as ``MP4 faststart.'' Rewriting MP4 files with their metadata at the beginning of the file permits faststart playback even if the file is transmitted sequentially.
+
+\subsection{``Sidecar Files:'' An Alternate Approach}
+
+The MP4 specification also permits metadata to reference stream data located in another file. This means that the metadata for an MP4 file could be backed up in a ``sidecar file'' that accompanies the original file. If both files are undamaged, opening either file will result in the same media playback. If the original file's metadata becomes damaged due to truncation, the media can still be played by opening the sidecar file. Moreover, the original file can be recovered by restoring the metadata from the sidecar file.
+
+This approach to MP4 preservation can be non-intuitive since users expect media files (and data files in general) to be self-contained and not depend on other files. Suppose, in the previous example, that the user realizes the original file is unplayable. Fortunately for the user, the sidecar file seems to work fine, so the user deletes the original file, mistakenly believing that both files merely contained the same media: after all, opening either file used to result in the same playback. More fundamentally, suppose the original file were intact, and the user recognized the files as ``duplicates.'' In an effort to save disk space, the user might decide to keep only the smaller file and delete the original file. In any case, without access to the data contained in the original file, the sidecar file no longer works.
+
+\subsection{Experimental Outcome}
+
+We will move ahead in this study with the faststart approach to preservation. The ffmpeg utility includes a MOV/MPEG-4 muxer that supports a \texttt{+faststart} flag.\footnote{\url{https://ffmpeg.org/ffmpeg-formats.html}} The presence of this flag results in an MP4 output file with the metadata at the beginning of the file. Use of this flag is demonstrated in Listing \ref{lst:faststart-usage}. Performing this manipulation on the D14, D17, and D34 videos results in playable files that retain their playability in the face of truncation, as shown in Table \ref{tab:faststart-preservation}.
+
+\vspace{1em}
+\begin{lstlisting}[language=bash,caption={ffmpeg faststart usage example},label={lst:faststart-usage}]
+ffmpeg -i input.mp4 -c:a copy -c:v copy \
+    -movflags +faststart \
+    output.mp4
+\end{lstlisting}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l||cc|cc|cc|}
+        \hline
+        \textbf{Induced Corruption} & \textbf{D14} & \textbf{D14 FS} & \textbf{D17} & \textbf{D17 FS} & \textbf{D34} & \textbf{D34 FS} \\
+        \hline \hline
+        Unmodified & (full) & full & (full) & full & (full) & full \\
+        \hline \hline
+        Truncation (2 KB) & full & full & no audio & full & no video & full \\
+        Truncation (200 KB) & unplayable & full & unplayable & full & unplayable & full \\
+        Truncation (500 KB) & unplayable & full & unplayable & full & unplayable & full \\
+        \hline
+    \end{tabular}
+    \caption{Faststart (FS) preservation effectiveness}
+    \label{tab:faststart-preservation}
+\end{table}
+
+In all cases, the faststart-modified files (columns labeled ``FS'' in Table \ref{tab:faststart-preservation}) are playable before truncation. These results support Hypothesis \ref{hyp:preserved-default-playable} that preserved files are playable without being subject to any data corruption. Moreover, the preserved files retain full playability in all truncation cases. This supports Hypothesis \ref{hyp:preserved-corrupted-playable}, which validates the preservation method.
+
+\section{Recovery}
+
+\subsection{Minimum Required Data}
+
+MP4 files are composed of a selection of standard (and occasionally custom) boxes or atoms. The contents of these boxes may differ, but playability must be derived from the presence of a minimal set. We can narrow down which of these may be minimally required by intersecting the tree structures of all original files in our dataset. The detailed MP4 trees of these files and the derivation of their intersection are available in Appendix \ref{cha:mp4-trees}.
+
+In implementing the inspection capabilities of the mangler utility program, we observed three variations in the way MP4 boxes are used: empty, structural, and data-bearing. Empty boxes contained no data and typically had a type identifier of \texttt{free}. Structural boxes were always observed to contain only child boxes recursively, whereas data-bearing boxes contained raw data and no child boxes. Hence, in common tree data structure parlance, structural boxes serve as internal nodes, whereas empty and data-bearing boxes serve as leaf nodes.
+
+Playability is derived from the data contained in these leaf nodes and, transitively, by the structure where this data is stored. Hence, we assume structural nodes are required for playability if and only if their children are required. In this experiment, we used the mangler utility to create several derived versions of the D17 video. D17 is among the simplest of the videos in the selected dataset, containing only two tracks and relatively few leaf nodes. For each derived video, the mangler removed a specific leaf node by changing the type of the target node(s) to \texttt{free} and setting all of its contained data to empty bytes (\texttt{0x00*}). Performing the removal in this way (as compared to excising the target nodes) preserves the same overall structure and data offsets and is, therefore, minimally invasive. The results of evaluating playability based on the presence (absence) of these leaf nodes are shown in Table \ref{tab:leaf-box-playability}.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|c|l|}
+        \hline
+        \textbf{Req'd?} & \textbf{Leaf Box Path} \\
+        \hline \hline
+        & \texttt{ftyp} \\
+        \( \bullet \) & \texttt{mdat} \\
+        & \texttt{moov/mvhd} \\
+        & \texttt{moov/meta} \\
+        & \texttt{moov/trak[*]/tkhd} \\
+        ? & \texttt{moov/trak[*]/mdia/mdhd} \\
+        & \texttt{moov/trak[*]/mdia/hdlr} \\
+        & \texttt{moov/trak[0]/mdia/minf/vmhd} \\
+        & \texttt{moov/trak[1]/mdia/minf/smhd} \\
+        & \texttt{moov/trak[*]/mdia/minf/dinf/dref} \\
+        \( \bullet \) & \texttt{moov/trak[*]/mdia/minf/stbl/stsd} \\
+        \( \bullet \) & \texttt{moov/trak[*]/mdia/minf/stbl/stts} \\
+        & \texttt{moov/trak[0]/mdia/minf/stbl/stss} \\
+        \( \bullet \) & \texttt{moov/trak[*]/mdia/minf/stbl/stsz} \\
+        \( \bullet \) & \texttt{moov/trak[*]/mdia/minf/stbl/stsc} \\
+        \hline
+    \end{tabular}
+    \caption{Boxes required for playability as validated on D17}
+    \label{tab:leaf-box-playability}
+\end{table}
+
+The \texttt{mdat} box contains the stream data, so removing this box makes the video trivially unplayable due to the lack of any media data. The more exciting cases arise when media data is present, but the player cannot interpret it due to missing metadata under the \texttt{moov} atom and descendants.
+
+In most cases, playability was readily apparent: either the video would play normally, or the player would fail to open the file. When the \texttt{mdhd} box was removed, the player would open the video, but the time scale was very distorted: some parts would play slowly, other parts would play quickly, and the audio and video streams were out of sync.
+
+To summarize, an MP4 file will be playable if and only if it has an \texttt{mdat} box with readable stream data, an \texttt{moov} box containing at least one \texttt{trak} box, and all of the following metadata boxes for each \texttt{trak}: \texttt{stsd}, \texttt{stts}, \texttt{stsz}, and \texttt{stsc}. This is the minimal set of data predicted by Hypothesis \ref{hyp:min-data}.
+
+\subsection{Missing Required Metadata in Unplayable Files}
+
+For the case of non-trivially unplayable videos, we assume an intact \texttt{mdat} box and look instead for missing required metadata. Examining the unplayable videos from the investigation experiments (see Table \ref{tab:corruption-playability}) reveals what parts of the metadata were damaged by our induced corruption. The results of this examination are shown in Table \ref{tab:missing-required-data}.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l|c||l|}
+        \hline
+        \textbf{File} & \textbf{Corruption} & \textbf{Playability} & \textbf{Missing Metadata} \\
+        \hline \hline
+        D14 & Truncation (200 KB) & unplayable & entire \texttt{moov} box missing \\
+        D14 & Truncation (500 KB) & unplayable & entire \texttt{moov} box missing \\
+        \hline
+        D17 & Blanking (3 \( \times \) 4 KiB) & no video & \texttt{stts}?, \texttt{stsz}? (video \texttt{trak} box only) \\
+        D17 & Truncation (2 KB) & no audio & \texttt{stsc}, \texttt{stsz}? (audio \texttt{trak} box only) \\
+        D17 & Truncation (200 KB) & unplayable & entire \texttt{moov} box missing \\
+        D17 & Truncation (500 KB) & unplayable & entire \texttt{moov} box missing \\
+        \hline
+        D34 & Truncation (2 KB) & no video & \texttt{stss}, \texttt{stsc}, \texttt{stsz}? (video \texttt{trak} box only) \\
+        D34 & Truncation (200 KB) & unplayable & entire \texttt{moov} box missing \\
+        D34 & Truncation (500 KB) & unplayable & entire \texttt{moov} box missing \\
+        \hline
+    \end{tabular}
+    \caption{Missing required metadata from prior experimental results (includes files with partial playability). Metadata annotated with a question mark (?) indicates the presence of a required box with invalid contents.}
+    \label{tab:missing-required-data}
+\end{table}
+
+\subsection{Reconstruction of Missing Metadata}
+
+We found the missing metadata cannot be readily inferred from intact data and are therefore unable to determine the possibility for recovery (Hypothesis \ref{hyp:recovery-possible}). A more detailed discussion is provided in the chapter(s) that follow. However, if we assume that such recovery is possible, the process should yield metadata that provides a valid substitute for the metadata in the original video file. Therefore, we implement a surrogate recovery method that reads the required metadata from the original file.
+
+\subsection{Recovery of Playability}
+
+Using the results of the surrogate reconstruction method above, we splice the ``recovered'' metadata into the unplayable corrupted file with the expectation that the resulting recovered file will be playable and contain the same content recognizable in the original video. The results of this experiment are outlined in Table \ref{tab:recovery-results}.
+
+\begin{table}
+    \centering
+    \begin{tabular}{|l|l||c||c|}
+        \hline
+        \textbf{File} & \textbf{Corruption} & \textbf{Corrupt State} & \textbf{Recovered Playability} \\
+        \hline \hline
+        D14 & Truncation (200 KB) & unplayable & full \\
+        D14 & Truncation (500 KB) & unplayable & full \\
+        \hline
+        D17 & Blanking ($3\times 4\,\mathrm{KiB}$) & no video & full \\
+        D17 & Truncation (2 KB) & no audio & full \\
+        D17 & Truncation (200 KB) & unplayable & full \\
+        D17 & Truncation (500 KB) & unplayable & full \\
+        \hline
+        D34 & Truncation (2 KB) & no video & full \\
+        D34 & Truncation (200 KB) & unplayable & full \\
+        D34 & Truncation (500 KB) & unplayable & full \\
+        \hline
+    \end{tabular}
+    \caption{Metadata recovery effectiveness}
+    \label{tab:recovery-results}
+\end{table}
+
+In all cases, restoring the missing metadata resulted in fully playable files, and the media presented during playback of the restored files were identical to those of the originals. This lends complete support to Hypothesis \ref{hyp:recovered-playable}.

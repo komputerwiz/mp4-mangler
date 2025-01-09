@@ -1,0 +1,16 @@
+
+\chapter{\uppercase{Summary and Conclusion}}
+
+The motivation for this research is the observation that MP4 files might become unplayable spontaneously over time due to data corruption. After external ``black box'' probing using a model for data corruption, we have determined that truncation is responsible for this spontaneous unplayability. Moreover, we find the underlying reason for this phenomenon is that many recording devices append the media metadata to the end of the file. This metadata is required for playability, and its position at the end of the file leaves it vulnerable to being damaged or completely stripped from the file due to truncation.
+
+Armed with these findings, we take advantage of the flexibility afforded by the MP4 specification and relocate this metadata to the beginning of the file. This restructuring not only addresses the ``faststart'' problem but also effectively prevents truncation from rendering these media files unplayable. In this structure, the media data at the end of the file may be truncated, but the vital metadata remains intact. In this state, the files retain their playability, and playback is unaffected up to the point of truncation.
+
+After opening the ``black box'' and probing the specific structure of MP4 media files, we identified the data structures MP4 players require for playback. Damaging this information will affect the file's playability, and in the event of its loss, restoring this data will also restore playability.
+
+\section{Future work}
+
+MP4 files are highly complex, and the encoded media data they contain is even more so: the modern audio and video codecs used by the MP4 container specification are very efficient and highly compressed. The accompanying metadata provides media players with the necessary details to decode this compressed data into something we can see and/or hear.
+
+More research is needed to determine whether and, if so, how this metadata can be reconstructed by looking at the intact media data. Doing so would be akin to uncompressing a compressed file without its accompanying index or decrypting an encrypted file without its key.
+
+MP4 files represent a single format used for storing media data. Additional research could help determine whether other media container formats, such as VP9 and Matroska MKV, have similar weaknesses or are prone to the same data corruption problems. If so, perhaps the preservation method identified in this research or similar methods could apply to them.

@@ -1,0 +1,8 @@
+
+\chapter{\uppercase{Phase 3: Recovery}}
+
+This question is more difficult to answer and will be the focus of future research. Given the \texttt{moov} box's complexity, the prospect seems daunting. A few niche tools have been written in an attempt to solve this issue, but each has its drawbacks, and the possibility of successful recovery---even partial recovery---remains low. The untrunc\footnote{https://github.com/ponchio/untrunc} and recover\_mp4\footnote{https://codecpack.co/download/recover-mp4.html} utilities attempt to copy the \texttt{moov} box from ``a similar not broken video'' and use that as a template. The former only runs under UNIX/Linux environments, and the latter only runs under Windows.
+
+To determine whether a \texttt{moov} box can be reconstructed by inspecting the surviving media data, we need to determine the minimal information and hierarchical structure necessary to describe the movie. The fact that we are working with a media file containing only a single H.264 video stream simplifies this task, and recovery in general will require additional work to detect the number and classify the type of each track. Much of the metadata is optional and can be omitted altogether. The remaining required metadata will either have to be inferred, assumed, or requested from the user.
+
+The sample table (\texttt{stbl}) box is the most important metadata that needs to be recovered since it links the individual samples together in a way that a media player can understand. The structure and information contained both in this box and in the \texttt{mdat} stream remain unknown, and, depending on the information available to us, the task of reconstructing this data may even prove to be impossible.

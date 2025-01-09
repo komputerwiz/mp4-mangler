@@ -1,0 +1,295 @@
+\chapter{\uppercase{MP4 Trees for Experimental Dataset}}
+\label{cha:mp4-trees}
+
+The listings in this chapter contain textual representations of the MP4 box/atom trees that comprise the files used for experimentation in this study. Structures that are common to all files are indicated by an asterisk (\texttt{*}).
+
+\section{D14}
+
+\begin{lstlisting}
+ftyp (20 B) *
+wide (8 B)
+mdat (61475099 B) *
+moov (26406 B) *
+  mvhd (108 B) *
+  trak (12055 B) *
+    tkhd (92 B) *
+    tapt (68 B)
+      clef (20 B)
+      prof (20 B)
+      enof (20 B)
+    edts (36 B)
+      elst (28 B)
+    mdia (11851 B) *
+      mdhd (32 B) *
+      hdlr (49 B) *
+      minf (11762 B) *
+        vmhd (20 B) *
+        hdlr (56 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (11642 B) *
+          stsd (167 B) *
+          stts (24 B) *
+          ctts (6120 B)
+          cslg (32 B)
+          stss (120 B) *
+          sdtp (775 B)
+          stsc (976 B) *
+          stsz (3072 B) *
+          stco (348 B)
+  trak (5770 B) *
+    tkhd (92 B) *
+    edts (36 B)
+      elst (28 B)
+    mdia (5634 B) *
+      mdhd (32 B) *
+      hdlr (49 B) *
+      minf (5545 B) *
+        smhd (16 B) *
+        hdlr (56 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (5429 B) *
+          stsd (159 B) *
+          sgpd (26 B)
+          sbgp (28 B)
+          stts (24 B) *
+          stsc (556 B) *
+          stsz (4412 B) *
+          stco (216 B)
+  trak (593 B) *
+    tkhd (92 B) *
+    edts (36 B)
+      elst (28 B)
+    mdia (457 B) *
+      mdhd (32 B) *
+      hdlr (52 B) *
+      minf (365 B) *
+        gmhd (32 B)
+          gmin (24 B)
+        hdlr (56 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (233 B) *
+          stsd (133 B) *
+          stts (24 B) * 
+          stsc (28 B) *
+          stsz (20 B) *
+          stco (20 B) *
+  trak (2914 B) *
+    tkhd (92 B) *
+    edts (36 B)
+      elst (28 B)
+    mdia (2778 B) *
+      mdhd (32 B) *
+      hdlr (52 B) *
+      minf (2686 B) *
+        gmhd (32 B)
+          gmin (24 B)
+        hdlr (56 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (2554 B) *
+          stsd (578 B) *
+          stts (120 B) *
+          stsc (232 B) *
+          stsz (1472 B) *
+          stco (144 B)
+  trak (4326 B) *
+    tkhd (92 B) *
+    edts (36 B)
+      elst (28 B)
+    mdia (4190 B) *
+      mdhd (32 B) *
+      hdlr (52 B) *
+      minf (4098 B) *
+        gmhd (32 B)
+          gmin (24 B)
+        hdlr (56 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (3966 B) *
+          stsd (602 B) *
+          stts (24 B) *
+          stsc (40 B) *
+          stsz (3072 B) *
+          stco (220 B)
+  meta (632 B) *
+free (77430 B)
+\end{lstlisting}
+
+\section{D17}
+
+\begin{lstlisting}
+ftyp (24 B) *
+mdat (70946324 B) *
+moov (20913 B) *
+  mvhd (108 B) *
+  udta (66 B)
+  meta (177 B) *
+  trak (14743 B) *
+    tkhd (92 B) *
+    mdia (14643 B) *
+      mdhd (32 B) *
+      hdlr (44 B) *
+      minf (14559 B) *
+        vmhd (20 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (14495 B) *
+          stsd (171 B) *
+          stts (7768 B) *
+          stss (120 B) *
+          stsz (6164 B) *
+          stsc (40 B) *
+          co64 (224 B)
+  trak (5811 B) *
+    tkhd (92 B) *
+    edts (48 B)
+      elst (40 B)
+    mdia (5663 B) *
+      mdhd (32 B) *
+      hdlr (44 B) *
+      minf (5579 B) *
+        smhd (16 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (5519 B) *
+          stsd (91 B) *
+          stts (328 B) *
+          stsz (4816 B) *
+          stsc (52 B) *
+          co64 (224 B)
+\end{lstlisting}
+
+\section{D34}
+
+\begin{lstlisting}
+ftyp (28 B) *
+mdat (104914320 B) *
+moov (28745 B) *
+  mvhd (108 B) *
+  udta (37 B)
+  meta (124 B) *
+  trak (7837 B) *
+    tkhd (92 B) *
+    mdia (7737 B) *
+      mdhd (32 B) *
+      hdlr (43 B) *
+      minf (7654 B) *
+        nmhd (12 B)
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (7598 B) *
+          stsd (58 B) *
+          stts (3968 B) *
+          stsz (3052 B) *
+          stsc (304 B) *
+          co64 (208 B)
+  trak (6099 B) *
+    tkhd (92 B) *
+    mdia (5999 B) *
+      mdhd (32 B) *
+      hdlr (44 B) *
+      minf (5915 B) *
+        smhd (16 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (5855 B) *
+          stsd (91 B) *
+          stts (472 B) *
+          stsz (4752 B) *
+          stsc (316 B) *
+          co64 (216 B)
+  trak (14532 B) *
+    tkhd (92 B) *
+    mdia (14432 B) *
+      mdhd (32 B) *
+      hdlr (44 B) *
+      minf (14348 B) *
+        vmhd (20 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (14284 B) *
+          stsd (180 B) *
+          stts (7360 B) *
+          stsz (6084 B) *
+          stsc (316 B) *
+          co64 (216 B)
+          stss (120 B) *
+\end{lstlisting}
+
+\section{D43}
+
+\begin{lstlisting}
+ftyp (24 B) *
+moov (21793 B) *
+  mvhd (108 B) *
+  meta (177 B) *
+  trak (16049 B) *
+    tkhd (92 B) *
+    edts (36 B)
+      elst (28 B)
+    mdia (15913 B) *
+      mdhd (32 B) *
+      hdlr (44 B) *
+      minf (15829 B) *
+        vmhd (20 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (15765 B) *
+          stsd (165 B) *
+          stts (6144 B) *
+          ctts (5944 B)
+          stss (124 B) *
+          stsz (3088 B) *
+          stsc (76 B) *
+          co64 (216 B)
+  trak (5451 B) *
+    tkhd (92 B) *
+    mdia (5351 B) *
+      mdhd (32 B) *
+      hdlr (44 B) *
+      minf (5267 B) *
+        smhd (16 B) *
+        dinf (36 B) *
+          dref (28 B) *
+        stbl (5207 B) *
+          stsd (91 B) *
+          stts (24 B) *
+          stsz (4808 B) *
+          stsc (52 B) *
+          co64 (224 B)
+free (383387 B)
+mdat (33584287 B) *
+\end{lstlisting}
+
+\section{Common intersection}
+
+The following (alphabetized) tree structure is shared across all MP4 files and, therefore, must be a superset of the minimum information required for playability.
+
+\begin{lstlisting}
+ftyp
+mdat
+moov
+  meta
+  mvhd
+  trak
+    mdia
+      hdlr
+      mdhd
+      minf
+        dinf
+          dref
+        smhd
+        stbl
+          stsc
+          stsd
+          stss
+          stsz
+          stts
+        vmhd
+    tkhd
+\end{lstlisting}
+
+\pagebreak{}

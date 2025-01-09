@@ -1,0 +1,102 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  New template code for TAMU Theses and Dissertations starting Spring 2021.
+%
+%
+%  Author: Thesis Office
+%
+%  Last Updated: 1/13/2021
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                           SECTION IV
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\chapter{\uppercase{Phase 2: Preservation of MP4 Files}}
+
+Creating and saving any form of time-based media is a stream-based process: the contents are persisted to storage over time by appending to a file. The encoding software or recording device does not have full details of several key aspects of the video that belong in the \texttt{moov} box (such as its duration) until the process is completed. Once all of the media data has been saved, the \texttt{moov} box can be computed and saved as well. Simply appending this data to the end of the file is a much cheaper operation than restructuring the file to save it elsewhere. This is why unanticipated interruptions of this process often---if not always---result in an unplayable file.
+
+\section{Method 1: Relocate the \texttt{moov} box}
+
+One possible approach to preventing truncation errors from corrupting the \texttt{moov} box could be to simply move the box elsewhere in the file. This method has been explored already for a different purpose: enabling ``progressive download'' or ``fast start,'' which allows MP4 files to be played while they are still being downloaded \cite{pandey2020}. The rationale behind this concept is that a media player is unable to begin playback until it has received and processed the \texttt{moov} box. Rather than waiting for the entire file to download, placing the \texttt{moov} box at the beginning of the file allows playback to begin immediately.
+
+However, to our benefit, this method also prevents truncation from making the entire movie unplayable: the segment leading up to the truncation should remain playable. To test this theory, we used ffmpeg with the \texttt{-movflags faststart} option to create a version of the original movie with the \texttt{moov} box at the start of the file and repeated the truncation experiment. As predicted, all files remained playable, and playback stopped at points relative to how much of the file was truncated, i.e., large truncations caused playback to stop sooner:
+
+\begin{itemize}
+	\item Original file: 944.5 KB, 15 seconds duration
+	\item 500 KB truncation: playback stops at 8 seconds
+	\item 200 KB truncation: playback stops at 13 seconds
+	\item 2 KB truncation: playback stops at 14 seconds (barely perceptible)
+\end{itemize}
+
+To accomplish this method, the resulting video file needs to be encoded in multiple passes. This approach may not be feasible for devices with restricted power, space, and computing resources; so we discuss an alternative method below.
+
+\section{Method 2: ``Sidecar'' MP4 File}
+
+As detailed in Section \ref{cha:mp4-container-format}.\ref{sec:moov-box}, the MP4 specification contains provisions for the \texttt{moov} box to reference media data contained in a separate file. We can use this to our advantage to offer a preservation technique that does not require multi-pass encoding. When finalizing an MP4 file, a slightly modified \texttt{moov} box can be written to a completely separate file that will live alongside the original file containing the video. This metadata-only file will serve as a backup means of playing the video and recovering metadata in the event the original file becomes truncated. It will also be much smaller and thus hopefully less prone to corruption. Such ``sidecar'' files could result in user confusion unless their purpose is conveyed clearly. Moreover, keeping both files together may be inconvenient, but such multi-file formats are used in other applications. For example, ESRI Shapefiles consist of several files that work together to encode geospatial information \cite{esri1998}. This approach can be done in addition to placing the \texttt{moov} box at the end of the file as usual, or as a redundant step in relocating the \texttt{moov} atom to the front of the file.
+
+See Figure \ref{fig:mp4-preserved} for a visual depiction of the results of applying both methods.
+
+\begin{figure*}[htb]
+	\centering
+	\includegraphics[width=\textwidth]{images/mp4-preserved.png}
+	\caption{Combination of proposed methods for hardening MP4 files against truncation: Method 1 (left) relocates the \texttt{moov} box to the beginning of the file. Method 2 (right) writes a separate metadata-only sidecar file that references the media data in the original file.}
+	\label{fig:mp4-preserved}
+\end{figure*}
+
+
+
+%\chapter{SUMMARY AND CONCLUSIONS \label{cha:Summary}}
+%
+%The summary goes here, along with your conclusions. The title of this final chapter/section must contain the words ``summary'' or ``conclusions.''
+%
+%Here, I attempt to fill the section with more figures, possibly more tables. The inclusion of these floats is to manipulate the list of figures and list of tables in order to see when the inconsistent spacing begins. It is important to remember that any images you wish to use are placed in the appropriate directory inside the folder in which the project is kept. In the original template, all the images used as figures here are placed in the subdirectory \textit{graphics}, as declared in the preamble of \textit{TAMUTemplate.tex}. If you wish to use any other directories, be sure to declare them in the preamble of \textit{TAMUTemplate.tex}. See the figure below on how to declare directories.
+%
+%\begin{figure}[h!]
+%	\centering
+%	\includegraphics[scale=0.95]{GraphicDir.png}
+%	\caption{Declaring graphics directories.}
+%\end{figure}
+%
+%This version of the template now has a section to place any packages that you are using - see the figure below.
+%
+%\begin{figure}[!h]
+%	\centering
+%	\includegraphics[scale=0.95]{CustomPackage.png}
+%	\caption{The place to declare any packages you require that I have not already declared. This simplifies debugging.}
+%\end{figure}
+%
+%More figures will be inserted, with some text between them.
+%
+%\begin{figure}[!h]
+%	\centering
+%	\includegraphics[scale=0.85]{CartesianCoordinate.png}
+%	\caption{Two points on the unit circle and their corresponding position vectors.}
+%\end{figure}
+%
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%\begin{figure}[!h]
+%	\centering
+%	\includegraphics[width=4.25in]{CompileChange.png}
+%	\caption{Changing the method of compilation for XeLaTeX in TeXstudio.}
+%\end{figure}
+%
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%\begin{figure}[!h]
+%	\centering
+%	\includegraphics[width = 4.825in]{Changelog.png}
+%	\caption{A portion of the changelog in the README for this document. This is located in the root directory.}
+%\end{figure}
+%
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document. This section has filler text. These words serve no meaning except to fill a few lines in the document.
+%
+%\section{Challenges}
+%Section here is to test toc display only.
+%
+%\section{Further Study}
+%Section here is to test toc display only.
+%

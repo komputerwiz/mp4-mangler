@@ -1,0 +1,303 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  New template code for TAMU Theses and Dissertations starting Spring 2021.
+%
+%
+%  Author: Thesis Office
+%
+%  Last Updated: 1/13/2021
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%                           SECTION I
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\chapter{\uppercase{Introduction}}
+
+Video media pervades modern life: it captures memories of important events, keeps records for later review, tells engaging stories for entertainment, and spreads news about current events. Much of this video data has great intrinsic or sentimental value and is worth preserving. Yet, some videos succumb to data corruption over time and eventually lose their ability to be viewed. Digital video files are saved in many different formats. At the time of writing, MPEG-4 (MP4 for short) is one of the most common formats, and a preliminary survey shows it is particularly susceptible to this type of corruption and loss. This study investigates the underlying cause of this problem and aims to mitigate against future data loss.
+
+\section{Background}
+
+Digital forensics, as the subject implies, brings the rigor of forensic investigation to digital applications. Any forensic science seeks to answer the question, ``What happened here?'' usually in the wake of some unknown or undesirable event such as a criminal investigation. Digital forensics frequently involves working with data assumed to contain valuable information, but that information may not be known ahead of time and must be uncovered through analysis and interpretation. Low-level sequences of bits stored in a computer may seem like random noise on initial inspection. These bits derive meaning from how they are interpreted, which, in turn, depends on the method used to encode the information they represent. The loss of this critical metadata might result in the effective loss of the data itself, akin to losing the key needed to decrypt a secure message. More fundamentally, even if the proper decoding method is known, the resulting interpretation is potentially meaningless if the data itself is corrupted.
+
+Within the realm of digital forensics, data recovery methods provide a means of detecting and repairing data corruption or reverse engineering its interpretation. However, such \emph{a posteriori} methods come into use only after the damage has been done. The task of hardening data against corruption or aiding in recovery \emph{a priori} belongs to the field of data preservation. Both of these fields complement each other: improvements to data preservation tactics amplify the effectiveness of data recovery methods, and advances in data recovery improve the perceived reliability of current data formats and storage practices. 
+
+Media information collectively refers to audio, photographic, and video information. Encoding such information into files poses a particular challenge due to its complexity. By contrast, numeric and textual information can be encoded efficiently in compact formats that are relatively easy for both humans and computers to interpret. This is due to the symbolic nature of text and numbers, where information is conveyed through discrete finite values and glyphs. Media data carries much more information and is intended to reconstruct the signals that stimulate our senses directly. Consider the nature of this data. Our senses and the mind's interpretation leave much room for the data to vary: two similar-looking videos might have subtle variations in subject placement, colors, brightness, audio, timing, etc. While there is significant room for variation, media formats represent a form of ordered information that is distinct from randomness. Note the virtual impossibility that any such meaningful patterns could emerge from truly random data (e.g., white noise and ``snow''). The combination of variation and non-randomness in this information implies a large amount of entropy and, therefore, a large amount of bandwidth required to encode it.
+
+Media data are also highly dimensional, depending on the type. Audio data consists of a sequence of channels oriented along a single time dimension. Photographic media consists of color channels within a two-dimensional pixel array and reconstructs a visual stimulus at a single point in time. Video data is particularly interesting because it is a combination of both, with two-dimensional photographic data drawn out over time and usually accompanied by parallel audio data. If left in their raw formats, such video data would occupy an inordinate amount of storage space; so audio and visual \emph{codecs} employ various compression methods to retain the original meaning or value of the data while reducing the amount of space required to store it. Some codecs are perfectly reversible and therefore \emph{lossless}, whereas others represent an approximation of the original data and discard the residuals---i.e., \emph{lossy} codecs.
+
+Codecs encode a single stream of either audio or visual information, but not both. Therefore, to represent a video as a single file unit, the file format must contain a combination of encoded audio and visual \emph{streams} related by a common timescale. These file formats are called \emph{containers}. At the time of writing, MPEG-4 Part 14 (MP4), Matroska (MKV), and WebM (a derivative of MKV) represent some commonly used video container formats, with MP4 being highly favored by a vast majority of available hardware and software. Each container format supports one or more codecs for storing each contained audio and video stream. In the case of MP4, the most often used audio and video codecs are AAC and H.264, respectively. The Advanced Audio Coding (AAC) codec was first standardized in MPEG-2 Part 7, and the Advanced Video Coding (H.264) codec was introduced in MPEG-4 Part 10. Focusing on these most popular formats limits the scope of research while maximizing relevance to the general public.
+
+\section{The MP4 Container Format}
+
+\subsection{Specification History}
+
+The specifications governing the MP4 file format have their origin in Apple's QuickTime File Format (QTFF), which was originally published in 2001 \cite{apple2001}. This format was standardized and promulgated in ISO/IEC 14496-1 \cite{iso14496-1:2001} later that year by the Moving Picture Experts Group (MPEG) \cite{mpeg}\footnote{The MPEG group has since been closed in favor of the \emph{Moving Picture, Audio, and Data Coding by Artificial Intelligence (MPAI)} community \cite{mpai}.}. Since then, the format has been refined and updated to give rise to the following current standards:
+\begin{itemize}
+	\item ISO/IEC 14496-12:2022 -- ISO base media file format \cite{iso14496-12:2022},
+	\item ISO/IEC 14496-14:2020 -- MP4 file format \cite{iso14496-14:2020}, and
+	\item ISO/IEC 14496-15:2022 -- Carriage of network abstraction layer (NAL) unit structured video in the ISO base media file format \cite{iso14496-15:2022}.
+\end{itemize}
+14496-12 defines the basic structure used by the MP4 file format, and then 14496-14 extends this basic structure to include additional support specifically for certain audio and video codecs. The contents of 14496-15 are beyond the scope of this study.
+
+It should be noted that these official standards are not freely available: each publication costs 208 CHF (232.96 USD) to purchase at the time of writing. However, the specification can be obtained in other ways. The MPEG website archive \cite{mpeg} provides older, withdrawn versions of each publication, while Apple maintains the current version of the QTFF specification on its website with the following notice:
+\begin{quote}
+	The QTFF has been used as the basis of the MPEG-4 standard and the JPEG-2000 standard, developed by the International Organization for Standardization (ISO). Although these file types have similar structures and contain many functionally identical elements, they are distinct file types. \cite{apple2016}
+\end{quote}
+Despite the claim that the file types are distinct, the two file format specifications are similar enough from a technical perspective to develop a tool capable of reading files in either format. The structure of the MP4 file format can also be learned by inspecting the source code of open-source software that is capable of opening MP4 files, such as VLC \footnote{\url{https://www.videolan.org/vlc/}}, MPV \footnote{\url{https://mpv.io/}}, and ffmpeg \footnote{\url{https://ffmpeg.org/}}, to name a few.
+
+\subsection{Basic Internal Structure}
+
+Internally, an MP4 file contains a composite hierarchy of data units arranged as a tree. Apple's QTFF Specification \cite{apple2016} refers to these as ``atoms,'' whereas the ISO/IEC MPEG-4 specification refers to these as ``boxes.'' The two definitions are practically identical, and the terms may be used interchangeably in this document. However, the latter will be preferred out of respect for the standard, even though the information presented here relies heavily on Apple's freely available specification instead of the paywall-restricted ISO/IEC specification.
+
+Each box consists of a header and contents. The header includes a 4-byte discriminant value that helps to determine the type of data that the box contains. This discriminant, in combination with the box's position within the tree (i.e., ``ancestor'' boxes and their types), determines the exact field structure of a box. Apple gives the following example in their specification: ``the \emph{profile} atom inside a \emph{movie} atom contains information about the movie, while the \emph{profile} atom inside a \emph{track} atom contains information about the track'' (emphasis added to denote types). Given the above general description, all boxes contain at least the following two, maybe three, basic header fields in the provided order:
+
+\begin{enumerate}
+	\item \texttt{size}: \emph{unsigned 32-bit integer}, the number of bytes that the whole box occupies, including these fields. There are two special cases for this value:
+		\begin{enumerate}
+			\item The root box (and \emph{only the root}) may contain a size of 0 if its contents continue until the end of the file.
+			\item A box whose size is over \( 2^{32} \) bytes in length will have a size of 1 and provide the actual size in an additional \texttt{extended size} field below.
+		\end{enumerate}
+	\item \texttt{type}: \emph{4-character string}, the box's type discriminant.
+	\item \texttt{extended size}: \emph{unsigned 64-bit integer (optional)}, this field is present only if it is larger than what can fit in the \texttt{size} field. Otherwise, it is either omitted or filled with a placeholder \texttt{wide} box.\footnote{A \texttt{wide} box is an ``empty'' box containing only a header with a \texttt{size} of 8 bytes and a type of \texttt{"wide"}. Filling the extended size with a \texttt{wide} box has the effect of allowing the box to grow larger than \( 2^{32} \) bytes without needing to rewrite or reallocate it.}
+\end{enumerate}
+
+Of the many types of boxes defined by the specification, the following types are of interest: \texttt{moov} and \texttt{mdat}. A movie file must contain a \texttt{moov} box because it contains metadata about the movie and how to interpret it. Such metadata includes the number of tracks in the file, the type (audio, video, subtitles, etc.), codec used, and time synchronization information for each track, references for converting time indices to data locations, etc. The data referenced by the \texttt{moov} is stored in \texttt{mdat} boxes elsewhere in the file and not in the \texttt{moov} box itself. \texttt{mdat} boxes are relatively simple: each contains a header with the \texttt{size}, a \texttt{type} of \texttt{mdat}, and optionally the \texttt{extended size}, followed directly by binary media data. The structure of a \texttt{moov} box is much more complicated, and additional details of its structure are available in Appendix \ref{cha:mp4-metadata-structure}.
+
+Atoms deeper within the \texttt{moov} hierarchy are more tightly coupled with the individual pieces of the data that comprise the media information. For example, The \texttt{dinf} atom indicates where the data resides, i.e. the current file itself or in an external file, and the \texttt{stbl} atom provides a mapping from time and sample number to the offset/address where the sample's data can be found. According to the QTTF specification, ``a sample is a single element in a sequence of time-ordered data,'' the quantum of data represented by an MP4 container.
+
+\section{Problem Statement}
+
+The MP4 video file format is susceptible to data corruption. The degree to which this corruption affects the encoded video varies greatly. In some cases, minor corruption may have little to no effect. Noticeable effects may consist of a benign reduction in media quality or alter the video in some way. These types of errors leave the file in a still-playable state and sometimes can be recovered to their original quality using existing video recovery methods. However, in some unfortunate cases, even small amounts of data corruption in the right (or wrong) place can render an entire MP4 video file unplayable even though the vast remainder of the file remains intact.
+
+The goals of this research are to investigate why data corruption leads to unplayable MP4 video files, preserve files from this type of corruption, and to recover video files that have already been rendered unplayable.
+
+\subsection{Investigate}
+
+\emph{Identify the likely cause or causes of data corruption that can render MP4 files unplayable.}
+
+The data corruption process by which MP4 files are rendered unplayable may happen naturally over time without any human intervention, unintentionally through user error, or purposefully for some intended (possibly malicious) reason. Nonetheless, we hypothesize that a simple, common underlying mechanism exists by which MP4 videos are rendered unplayable. The findings of this investigation will determine how we approach the remaining research goals.
+
+\subsection{Preserve}
+
+\emph{Determine a way to harden MP4 files against this type of data corruption.}
+
+The MP4 file specification offers some flexibility in the structure, amount, and kind of data that can be stored. We hope to find a means of adjusting the file or embedding additional information that will reduce an MP4 file's susceptibility to the cause(s) identified in the first goal while still adhering to the specification.
+
+\subsection{Recover}
+
+\emph{Examine the feasibility of returning an unplayable MP4 file to a playable state.}
+
+The possibility of fully recovering unplayable MP4 files is tantalizing and could be extremely helpful. However, reconstructing lost data is incredibly challenging and even impossible depending on the nature of what was lost. Developing a general-purpose tool to perform MP4 file recovery might go beyond the scope of this research, so this goal will be to attempt recovery of isolated cases uncovered during the course of this research. The study findings for preservation may reduce or even eliminate the need for MP4 recovery.
+
+
+
+% Hence, the goals of this research are:
+% \begin{itemize}
+% 	\item detection and identification of minor data corruptions in encoded media formats;
+% 	\item repairing any detected data corruptions if recovery is feasible via:
+% 		\begin{itemize}
+% 			\item complete correction of the error and returning the file to its original data, or
+% 			\item approximation of the original data;
+% 		\end{itemize}
+% 	\item otherwise, if recovery is not possible, potentially returning the file to a playable format by excising or ``blanking'' the corrupted section.
+% \end{itemize}
+% This research also aims to consider:
+% \begin{itemize}
+% 	\item potential ways to improve the recoverability and robustness (i.e., the ability to read a file despite the presence of data corruption) of media formats, and
+% 	\item a survey of data storage practices that can mitigate data corruption in general and that can be applied to media files.
+% \end{itemize}
+
+% Such a tool would be useful for the aforementioned average individual who has lost any personal videos or photos to data corruption. It would also be invaluable to archivists seeking to preserve digitized historic footage, to digital forensics and cybersecurity experts when making sense of partial data, to researchers and investigators when recovering footage from a wayward experiment or other accident, and to law enforcement when extracting evidence from damaged surveillance data.
+
+% A comprehensive analysis of potential applications should also include how such a tool might be \emph{abused} by malicious actors. Such a data recovery tool could be used by cybercriminals to gain more extortion value from partially exfiltrated media files.
+
+% \section{Scope}
+
+% To create a general-purpose tool that aims to recover \emph{any} type of media file, although desirable, would be too ambitious for the scope of this research. Hence, this research focuses only on MPEG-4 Part 14 (MP4) files with H.264-encoded video. The rationale for this choice is twofold: First, most consumer video devices and software at the time of writing operate using this format. Second, the author has had the unfortunate first-hand experience of being unable to play an important video recorded in this format and thus has personal motivation to understand why this happens and how to prevent it from occurring in the future. The sections that follow will discuss video data is stored in general and specifically how the MP4 container format accomplishes this task.
+
+% \section{Related Work}
+
+% The recovery of corrupted media files has been explored in recent years, but not to the fullest extent: many opportunities exist for exploration and improvement, especially with recent breakthroughs in regression machine learning and the continued development of newer and more efficient codecs. Very few tools are capable of media file validation and repair, and those that claim to do so do not work reliably. Data storage devices are generally more reliable and less likely to lose data. However, although rare, losing a digital file to data corruption is a real occurrence that often goes unnoticed until that corrupted file is needed. Perhaps the rarity has not necessitated the development of a media file recovery tool; at least, not yet. Nonetheless, in this section, we discuss what other researchers have done in this field and any other auxiliary information needed to work with various modern media files.
+
+% Media files have complex structures due to the nature of the data they hold. A typical media file serves as a \emph{container} to one or more \emph{streams} of data contained within. In some cases, a stream may exist ``uncontained'' within a file. The data in each stream in turn has its own format according to the codec used to encode it. Many container and codec combinations exist to serve common goals, as evidenced by the number of commonly used technologies at the time of writing. Table \ref{tbl:container-codecs} lists several common media formats referenced by \cite{mdncontainers} and \cite{wikicontainers} (and subsequently linked specifications) for use in web technologies:
+
+% \begin{table*}[!ht]
+% 	\caption{Compatibility of common media container and codec formats}
+% 	\centering
+% 	\begin{tabular}{|l|l|l|}
+% 		\hline
+% 		\textbf{Container Format} & \textbf{Visual Codec(s)} & \textbf{Audio Codec(s)} \\
+% 		\hline\hline
+% 		\multicolumn{3}{|c|}{\emph{Video Media}} \\
+% 		\hline
+% 		MPEG-4 Part 14 (MP4) & H.264, H.265/HEVC & AAC, MP3 \\
+% 		Matroska (MKV) & \emph{any} & \emph{any} \\
+% 		WebM (based on MKV) & AV1, VP8, VP9 & Opus, Vorbis \\
+% 		\hline\hline
+% 		\multicolumn{3}{|c|}{\emph{Image Media}} \\
+% 		\hline
+% 		HEIF & H.265/HEVC & -- \\
+% 		JFIF & JPEG & -- \\
+% 		Exif & JPEG & -- \\
+% 		RIFF & WebP (based on VP8) & -- \\
+% 		\emph{(uncontained)} & PNG & -- \\
+% 		\hline\hline
+% 		\multicolumn{3}{|c|}{\emph{Audio Media}} \\
+% 		\hline
+% 		WAV & -- & PCM \\
+% 		\hline
+% 	\end{tabular}
+% 	\label{tbl:container-codecs}
+% \end{table*}
+
+% Any attempted recovery from these formats presupposes an adequate understanding of the container and codec specifications. In this case, we focus only on the MP4 container format and the H.264 video codec.
+
+% Machine learning also presents a useful tool for approximating the original data from a damaged media file. This method has been explored by \cite{hsh2019} to recover audio data using deep neural networks. Very recent developments in image synthesis models such as Stable Diffusion \cite{rombach2022} offer novel tools for \emph{inpainting}, which fills in details based on what the model predicts should be there. This technique alone could serve as a possible means for image and video recovery as will be discussed later.
+
+% Naturally, the interpretation of any data format presupposes that it is loaded from some type of storage (or networked) medium. Some digital forensics techniques such as file carving \cite{richard2007} or disk surface analysis \cite{gibson1993} seek to recover data from corrupted filesystems or failing storage devices by operating at lower levels. Such techniques lie beyond the scope of this research. However, since media files reside on various forms of storage media, this research does consider filesystem-level causes and prevention of data corruption.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \chapter{\uppercase {Introduction and Literature Review}}
+%
+% \section{Author's Message to the Student Using This Template For Their Thesis or Dissertation}
+%
+% Howdy! This is the template for theses and dissertations written using \LaTeX for submission at Texas A\&M University. The Graduate and Professional School (GPS) is here to guide you in submitting your thesis or dissertation and can help you with questions about that process. This template shows the many features of \LaTeX, with many more available to the user.
+%
+% There are numerous guides, references, and tutorials available on the Internet to help you. If you are stuck, don't be afraid to Google your issue, or you can contact Overleaf at welcome@overleaf.com. If you have questions about submitting or processing your document you can email the Thesis Office at thesis@tamu.edu
+%
+%
+% \subsection{Brief Usage of the Template}
+%
+% This template is intended for use by STEM\footnote{Science, Technology, Engineering, and Mathematics. This is an example of a footnote. You can see that it is numbered and appended at the end of the page. Also, you can see the effect of having a multiline footnote.} students. If you are not a STEM student, this template is likely not for you.If you are not familiar with LaTeX, now is not the best time to learn.
+%
+% The advantage of using this template over the Microsoft Word templates are numerous. First, there is a lot of control granted to the user in how the document looks. Of course, you are expected to still follow the guidelines set forth in the TAMU Thesis Manual. This template takes care of the margins, heading requirements, and orders the front matter for you.
+%
+%
+% \subsection*{Software to Install}
+%
+% \textbf{MikTeX} or \textbf{ProTeXt} is the free software recommended for Windows PC users to
+% compile your \LaTeX ~ document. To compile for this document, XeLaTeX compiling engine
+% is used. There is currently an issue in which the package xetex-def does not install; see the file README.txt for a solution. Another software called \textbf{JabRef} is also recommended for bibliography/reference management; its usage is similar with EndNote.
+%
+% \subsection*{Procedure to Compile \LaTeX ~ Document}
+%
+% This template (and consequently, your document) will be compiled using XeLaTeX. To compile your document, do the following\footnote{Notice here that I also show off the itemize environment for unordered lists. Ordered lists use the enumerate environment.}:
+%
+% \begin{itemize}
+% 	\item In TeXstudio, go to the Tools menu, then select Commands, and click XeLaTeX.
+%
+% 	\item In Texmaker, go to the Tools menu and select XeLaTeX.
+%
+% 	\item For other editors, consult the help files included with the editor.
+% \end{itemize}
+%
+% To view the output after the program is done compiling, press F7 in TeXstudio and TeXmaker or the appropriate hotkey for other editors. Be sure that the document is not open in another PDF reader, for your editor will not display it.
+%
+% \subsection{How to Fill This Document}
+% The document structure is organized in the main .tex file, TAMUTemplate.tex,
+% which has the same name as the output PDF file. Content in each section is in the data folder. You can open the .tex files under the data folder to modify. Four sections
+% are added initially. To add in more sections into the \LaTeX document, open the
+% TAMUTemplate.tex file and go to \textbf{line 130} you can just delete the content in the data folder and fill your documents and then compile under TAMUTemplate.tex.)
+%
+% \subsection{Reference Usage and Example}
+%
+% Here we test the usage of references. The book\cite{REALCAR}
+% is referred in this way. Actually, the option is available for you to change the default way how reference appears. The default and most commonly used option \cite{einstein} is displayed here \cite{Barn-JORVQ}.Both of these options are acceptable.
+%
+% Unrelated citations are referred here for the test of reference section only\cite{TAMU}. If you
+% find that the reference \cite{GIGEM} has more items than you need \cite{WAGFJ}, question marks will show up in place of a reference handle, like these \cite{Over9000}.
+%
+% \subsection{Equations, Formulas, and Other Really Cool Math Things That \LaTeX ~ Can Do}
+%
+% Equations can be written in \LaTeX ~ in one of two ways. First, you can have material displayed inline by enclosing the desired statement in dollar signs. For example, $e^{i\pi}+1=0$ is an inline math expression. Some longer expressions, especially those including sums, integrals, or large operators and objects can be displayed centered on their own line. In this \textbf{math mode}, you enclose the desired material in square brackets. For example,
+%
+% \[ \sum_{j = 1} ^n \int f_j \ dx = \int \sum_{j = 1} ^n f_j \ dx \]
+% is a math mode expression. We can also have a series of expressions aligned at a symbol. This is particularly useful when you are showing details in solving an equation or evaluating an integral. The next block shows off the \textit{align*} environment. We use it here to show a distributive property of set intersections over unions. Observe how each line is aligned to the biconditional symbol. This makes reading steps easier, since a reader can go line by line and determine why each step is justified.
+%
+% \begin{align*}
+% x \in A \cap \bigcup_{j} B_j &\iff x \in A \ \wedge \ x \in \bigcup_{j} B_j \\
+% &\iff x \in A \ \wedge \ x \in B_k \ \text{ for some k} \\
+% &\iff x \in \bigcup_{j} A \cap B_j
+% \end{align*}
+%
+% There are many more commands and features available, but this document is too small to contain them.\footnote{Yes, I pulled a Fermat. But really, a Google search will likely help you find what you need to do.} Many guides are available on the Internet for your use.
+%
+% %Have some material about the align environments. Include also the eqn environment.
+%
+% \subsection{A Test Section}
+%
+% This is just a test.This is what a subsection looks like. Below is a figure displaying some Haskell code in a compiler.
+%
+% \begin{figure}[!ht]
+% \centering
+% 	\includegraphics[scale=0.26]{images/Haskell1.jpg}
+% 	\caption{Some Haskell code in a compiler.}
+% \end{figure}
+%
+% This template has been designed for use in modern systems, but can perhaps be adapted to work on older systems, such as Windows 95. Below is a screenshot of a DOSBox console, an MS-DOS emulator designed to work on several platforms. Windows 95 can be installed into DOSBox, but it is not suggested.
+%
+% \begin{figure}[ht!]
+% \centering
+% 	\includegraphics[scale=0.55]{DOSBox1.jpg}
+% 	\caption{The DOSBox console running in Windows 7. The contents of the mounted directory C: are displayed, with the active subdirectory DUKE3D.}
+% \end{figure}
+%
+% \section{Specifications in This TAMU \LaTeX ~ Template}
+%
+% All requirements for theses can be found in the most recent version of the Thesis Manual, available at the GPS website. The Thesis Office will be happy to assist you if you have questions about specific formatting. Questions specific to \LaTeX\ should be directed to \texttt{welcome@overleaf.com}.
+%
+%  A copyright statement at the beginning of a section with reprinted material from a previously printed source is required. The screenshot below describes how to achieve this. Check the instruction files for more details.
+%
+% \begin{figure}[ht!]
+% \centering
+% 	\includegraphics[scale=0.65]{Footnote.png}
+% 	\caption{The inclusion of a copyright statement as a footnote. The lines in yellow help to change to footnote marking scheme.}
+% \end{figure}
+%
+% \subsection{Another Test Section}
+% There should be things here.
+%
+% %\begin{algorithm}
+% %Stuff.
+% %\end{algorithm}
+%
+% \subsubsection{Test}
+% Hello, is it me you're looking for?
+%
+% \subsubsection{Test 2}
+% There are more things to do.
+%
+% \subsection{Yet Another One}
+%  We insert a slew of figures in the remainder of the document to test the look of the List of Figures.
+%
+% \begin{figure}[H]
+% 	\centering
+% 	\includegraphics[width=4.25in]{Mint_XFCE.png}
+% 	\caption{Linux Mint 13 with the XFCE desktop environment.}
+% \end{figure}
+%
+% These are more figures.
+%
+% \begin{figure}[H]
+% 	\centering
+% 	\includegraphics[scale=0.45]{TOC2.png}
+% 	\singlespace
+% 	\caption{The ``Table of Contents" dialog box in Microsoft Word. This must be accessed to properly generate the Table of Contents when using the Recommended Template.}
+% \end{figure}
+%
+% Yet another figure follows - the last for this section.
+%
+% \begin{figure}[H]
+% 	\centering
+% 	\includegraphics[width=3.75in]{Rachl3.png}
+% 	\singlespace
+% 	\caption{Linear regression on three (top) and four (bottom) independent variables in base R.}
+% \end{figure}
+%
+%  \subsection{No Surprises Here}
+%  Insert another song lyric here.
+%
